@@ -1,7 +1,7 @@
 /* Shared tokens + chrome for the three rooms. Early Art Deco, mid-1920s:
    ivory lacquer, piano-black lacquer, polished brass, thin black inlay. */
-@font-face{font-family:"Jost";src:url("/static/fonts/jost-wght.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
-@font-face{font-family:"Manrope";src:url("/static/fonts/manrope-wght.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
+@font-face{font-family:"Jost";src:url("fonts/jost-wght.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:"Manrope";src:url("fonts/manrope-wght.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
 
 :root{
   /* Palette (contrast checked: ink/ivory 14.3, ink/recess 11.7, ivory/black 14.3,

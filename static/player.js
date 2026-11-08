@@ -125,7 +125,13 @@ function grabEnd(){
 }
 
 /* ---------- opening a record ---------- */
-async function request(url,body){const res=await fetch(url,{method:'POST',body});const data=await res.json();if(!res.ok)throw Error(/height map|metadata|polarity/i.test(data.error||'')?'That PNG is not a record from the Cutter. '+data.error:(data.error||res.statusText));return data;}
+async function request(url,body){
+ const offline='Opening your own records needs the local app (python3 serve.py). This page can still play the bundled demo.';
+ let res;try{res=await fetch(url,{method:'POST',body});}catch{throw Error(offline);}
+ let data={};try{data=await res.json();}catch{throw Error(offline);}
+ if(!res.ok)throw Error(/height map|metadata|polarity/i.test(data.error||'')?'That PNG is not a record from the Cutter. '+data.error:(data.error||offline));
+ return data;
+}
 function enableControls(){
  $('open').disabled=false;$('resetView').disabled=false;
  for(const id of ['needle','seek','rpm'])$(id).disabled=!record;
@@ -233,4 +239,14 @@ window.vinyl={get record(){return record;},get state(){return state;},get down()
 };
 setInterval(()=>{if(record){if(down&&!state.grabbed&&time()>=duration()){lift();}renderStatus();}},100);
 enableControls();
+(async()=>{
+ try{
+  const res=await fetch('demo/record.json');
+  if(!res.ok)return;
+  const data=await res.json();
+  if(!data||!data.metadata)return;
+  if(!data.base)data.base='demo/';
+  await load(data,data.label||'Original tune');
+ }catch{}
+})();
 })();

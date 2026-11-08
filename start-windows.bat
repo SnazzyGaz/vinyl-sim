@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Digital vinyl - local server
+echo Vinyl Sim - local server
 echo   Home    http://127.0.0.1:8765/
 echo   Cutter  http://127.0.0.1:8765/cutter
 echo   Player  http://127.0.0.1:8765/player

@@ -88,11 +88,22 @@ class Handler(BaseHTTPRequestHandler):
             if not entry:self.reply({'stage':'unknown','index':-1,'total':len(STAGES)-1});return
             entry['elapsed']=round(time.time()-entry.pop('started'),2);self.reply(entry);return
         page=route.rstrip('/') or '/'
-        if page in PAGES:path=ROOT/'static'/PAGES[page]
-        elif route.startswith('/static/'):path=ROOT/route.lstrip('/')
-        elif route.startswith('/output/'):path=ROOT/route.lstrip('/')
-        elif route=='/samples/original.wav':path=ROOT/'samples/original.wav'
-        else:self.send_error(404);return
+        if page in ('/player', '/cutter'):
+            self.send_response(302)
+            self.send_header('Location', page + '.html')
+            self.end_headers()
+            return
+        if page == '/' or route == '/index.html':
+            path = ROOT / 'index.html'
+        elif route in ('/player.html', '/cutter.html'):
+            path = ROOT / route.lstrip('/')
+        elif route.startswith('/static/') or route.startswith('/output/') or route.startswith('/demo/'):
+            path = ROOT / route.lstrip('/')
+        elif route == '/samples/original.wav':
+            path = ROOT / 'samples/original.wav'
+        else:
+            self.send_error(404)
+            return
         path=path.resolve()
         if not path.is_relative_to(ROOT) or not path.is_file():self.send_error(404);return
         content=mimetypes.guess_type(path)[0] or 'application/octet-stream'
@@ -164,5 +175,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--port',type=int,default=8765);a=p.parse_args()
     base=f'http://127.0.0.1:{a.port}'
-    print(f'Vinyl demo (Ctrl+C to stop):\n  Home    {base}/\n  Cutter  {base}/cutter\n  Player  {base}/player',flush=True)
+    print(f'Vinyl Sim (Ctrl+C to stop):\n  Home    {base}/\n  Cutter  {base}/cutter\n  Player  {base}/player',flush=True)
     ThreadingHTTPServer(('127.0.0.1',a.port),Handler).serve_forever()

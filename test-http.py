@@ -17,7 +17,7 @@ def run():
         request=urllib.request.Request(base+route,body,{'Content-Type':'multipart/form-data; boundary='+boundary,'Origin':base},method='POST')
         with urllib.request.urlopen(request,timeout=60) as response:return json.load(response)
     try:
-        with urllib.request.urlopen(base) as response:home=response.read().lower();assert b'href="/cutter"' in home and b'href="/player"' in home
+        with urllib.request.urlopen(base) as response:home=response.read().lower();assert b'href="cutter.html"' in home and b'href="player.html"' in home
         for page,marker in (('/cutter',b'id="saveset"'),('/cutter/',b'id="saveset"'),('/player',b'right-drag'),('/player/',b'right-drag')):
             with urllib.request.urlopen(base+page) as response:assert marker in response.read().lower(),page
         with urllib.request.urlopen(base+'/api/progress?job='+'0'*32) as response:assert json.load(response)['stage']=='unknown'

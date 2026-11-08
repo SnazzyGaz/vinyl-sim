@@ -18,16 +18,17 @@ let context;const sources=[];class AudioContext{
 }global.AudioContext=AudioContext;
 const record={id:'0'.repeat(32),base:'/output/'+'0'.repeat(32)+'/',has_vector:true,playback_source:'vector',metadata:{duration_sec:10,rpm_cut:45,sample_rate:16000,bandlimit_hz:1415,r_start_mm:86,pitch_mm:5,label_radius_mm:27,disc_radius_mm:90,amp_mm:.3,lead_in_turns:.35}};
 const record2={...record,id:'1'.repeat(32),base:'/output/'+'1'.repeat(32)+'/',has_vector:false,playback_source:'png',metadata:{...record.metadata,rpm_cut:78,disc_radius_mm:100}};
-let nextImport=record;const requests=[];global.fetch=async(url,opt)=>{requests.push(url);return{ok:true,json:async()=>nextImport,arrayBuffer:async()=>new ArrayBuffer(0)};};
+let nextImport=record;const requests=[];const apiPosts=()=>requests.filter(u=>u==='/api/import');
+global.fetch=async(url,opt)=>{requests.push(url);if(String(url).includes('demo/record.json'))return{ok:false,status:404,json:async()=>({}),arrayBuffer:async()=>new ArrayBuffer(0)};return{ok:true,json:async()=>nextImport,arrayBuffer:async()=>new ArrayBuffer(0)};};
 require('./static/player.js');
 const tick=()=>new Promise(r=>setTimeout(r,5));
 (async()=>{
  assert.equal(element('needle').disabled,true,'needle disabled before a record');
  // A groove WAV alone is not a record here.
  element('recordFile').onchange({target:{files:[{name:'a.groove.wav'}],value:''}});await tick();
- assert.equal(element('fault').hidden,false);assert.equal(requests.length,0);
+ assert.equal(element('fault').hidden,false);assert.equal(apiPosts().length,0);
  element('recordFile').onchange({target:{files:[{name:'tune.png'},{name:'tune.groove.wav'},{name:'tune.json'}],value:''}});await tick();await tick();
- assert.equal(requests[0],'/api/import');assert.equal(vinyl.record,record);assert.equal(vinyl.down,false);
+ assert.equal(apiPosts()[0],'/api/import');assert.equal(vinyl.record,record);assert.equal(vinyl.down,false);
  assert.equal(element('needleState').textContent,'Needle lifted — silent');
  assert.equal(groups.source[0].checked,true);assert.equal(groups.source[1].disabled,false);
  await element('needle').onclick();await tick();assert.equal(vinyl.down,true);assert.equal(element('needle').textContent,'Lift needle');
@@ -44,7 +45,7 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  vinyl.lift();groups.source[1].checked=true;groups.source[1].onchange({target:groups.source[1]});assert.equal(vinyl.record.playback_source,'png');assert.equal(vinyl.down,false);
 
  // Library + sleeves: opening a second record sleeves the first, keeps its buffers; swapTo needs no re-import.
- const firstBuffer=vinyl.buffer;nextImport=record2;const posts=()=>requests.filter(u=>u==='/api/import').length;
+ const firstBuffer=vinyl.buffer;nextImport=record2;const posts=()=>apiPosts().length;
  element('recordFile').onchange({target:{files:[{name:'b.png'}],value:''}});await tick();await tick();
  assert.equal(posts(),2);assert.equal(vinyl.record,record2);assert.equal(vinyl.rpm,78);assert.equal(element('recordName').textContent,'b');assert.equal(vinyl.libraryCount,2);
  let sl=events.filter(e=>e.type==='vinyl-sleeves').at(-1).detail;assert.equal(sl.current,record2.id);assert.deepEqual(sl.sleeves.map(s=>[s.id,s.label,s.cover]),[[record.id,'tune',record.base+'preview.png']]);

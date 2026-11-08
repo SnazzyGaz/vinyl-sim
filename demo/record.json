@@ -1,0 +1,65 @@
+{
+  "id": "demo-original-tune",
+  "metadata": {
+    "encoding_version": "vinyl-heightmap-lateral-v2",
+    "rpm_cut": 45.0,
+    "pitch_mm": 2.0,
+    "r_start_mm": 86.0,
+    "disc_radius_mm": 90.0,
+    "label_radius_mm": 27.0,
+    "amp_mm": 0.3,
+    "groove_width_mm": 0.8,
+    "groove_depth_mm": 0.45,
+    "thickness_mm": 2.5,
+    "sample_rate": 16000,
+    "duration_sec": 11.63475,
+    "lead_in_turns": 0.35,
+    "lead_out_turns": 0.5,
+    "image_size": 4096,
+    "height_scale_mm": 2.55,
+    "audio_storage": "Explicit prepared-displacement vector master + PNG depth export; never the original upload.",
+    "riaa": "none (custom reversible presence shelf, not RIAA)",
+    "max_duration_sec": 480,
+    "warning": "Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.",
+    "packing_mode": "outer-band-if-room-v1",
+    "height_polarity": "inverted",
+    "bandlimit_mode": "radius-following-v1",
+    "bandlimit_cap_hz": 6500.0,
+    "filter_window_samples": 1024,
+    "filter_hop_samples": 256,
+    "raster_subsamples": 4,
+    "preemphasis": "presence-shelf-v1",
+    "presence_shelf": {
+      "frequency_hz": 1500.0,
+      "gain_db": 6.0,
+      "slope": 1.0,
+      "b": [
+        1.735191860875051,
+        -2.2749495535019215,
+        0.856813588517222
+      ],
+      "a": [
+        1.0,
+        -1.0610999090993012,
+        0.37815580498965284
+      ],
+      "coefficient_sample_rate": 16000
+    },
+    "bandlimit_hz": 3200.453040710104,
+    "bandlimit_outer_hz": 4023.6874680684077,
+    "vector_master": {
+      "format": "pcm16-mono-displacement-v1",
+      "sample_count": 186156,
+      "sha256": "f473d764a47a7ec79a4c6a86567fae262a687ec4c04064fa24a476aece8865ca",
+      "meaning": "Prepared lateral displacement / amp_mm; adaptive-filtered, presence-emphasized, peak-normalized. Not the original upload."
+    },
+    "outside_value": 32768,
+    "outside_fill": "mid-grey"
+  },
+  "base": "demo/",
+  "playback_source": "vector",
+  "has_vector": true,
+  "has_png": true,
+  "audio_origin": "Both sources ready: use Playback to hear the vector master or the PNG trace. Never the original upload.",
+  "label": "Original tune"
+}
