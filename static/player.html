@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player — digital vinyl</title>
+<link rel="stylesheet" href="/static/deco.css">
+<link rel="stylesheet" href="/static/player.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
+</head>
+<body class="room-player" data-record="none">
+<div class="cabinet">
+  <nav class="directory" aria-label="Directory">
+    <span>Directory</span><span class="sep" aria-hidden="true">·</span>
+    <a href="/">Home</a><span class="sep" aria-hidden="true">·</span>
+    <a href="/cutter">Cutter</a><span class="sep" aria-hidden="true">·</span>
+    <span aria-current="page">Player</span>
+  </nav>
+
+  <header class="cabinet-head">
+    <h1 class="room-name">Player</h1>
+    <p class="record-card" aria-live="polite"><span id="recordName" class="record-name">No record on the platter</span><span id="recordFacts" class="figures record-facts">Open a 16-bit PNG cut on the Cutter</span></p>
+  </header>
+
+  <div class="cabinet-body">
+    <section class="well stepped black-core" id="well" aria-label="Turntable">
+      <div class="inset"><div class="core">
+        <div id="view"><p id="viewFallback">Turntable loading…</p></div>
+        <div class="invite" id="invite">
+          <p class="plate-title">Open a record</p>
+          <p class="invite-help">Choose the 16-bit PNG, or drop it here. Add its <span class="nowrap">.groove.wav</span> and <span class="nowrap">.json</span> to play from the vector master.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <aside class="rail" aria-label="Controls">
+      <div class="plate record-plate">
+        <input id="recordFile" class="sr-only" type="file" multiple tabindex="-1" accept=".png,.wav,.json,image/png,audio/wav,application/json">
+        <button id="open" class="btn" type="button">Open record</button>
+        <div class="tech" id="sourcePlate" data-both="false">
+          <span class="label" id="sourceLabel">Source</span>
+          <div class="plates small" role="radiogroup" aria-labelledby="sourceLabel">
+            <label><input type="radio" name="source" value="vector" disabled><span>Vector</span></label>
+            <label><input type="radio" name="source" value="png" disabled><span>PNG trace</span></label>
+          </div>
+          <p class="tech-note" id="origin">Vector master when its WAV is supplied; otherwise the PNG trace.</p>
+        </div>
+      </div>
+
+      <div class="plate needle-plate">
+        <button id="needle" class="btn brass" type="button" disabled aria-pressed="false">Drop needle</button>
+        <div class="indicator on-black" role="group" aria-label="Needle">
+          <span class="lamp" id="lamp" data-state="off" aria-hidden="true"></span>
+          <div class="readout">
+            <span id="needleState" class="state">Needle lifted</span>
+            <span class="sub"><span id="clock" class="figures">0:00.0 / 0:00.0</span><span aria-hidden="true"> · </span><span id="needleSource">No record</span></span>
+          </div>
+        </div>
+        <label class="label rail-label" for="seek">Position</label>
+        <input id="seek" class="rail" type="range" min="0" max="1000" step="1" value="0" disabled>
+      </div>
+
+      <div class="plate speed-plate">
+        <span class="label" id="speedLabel">Speed</span>
+        <div class="speed-row">
+          <div class="plates" role="radiogroup" aria-labelledby="speedLabel">
+            <label><input type="radio" name="rpmPreset" value="33.333333" disabled><span>33⅓</span></label>
+            <label><input type="radio" name="rpmPreset" value="45" checked disabled><span>45</span></label>
+            <label><input type="radio" name="rpmPreset" value="78" disabled><span>78</span></label>
+          </div>
+        </div>
+        <div class="knobs">
+          <div class="knob-wrap">
+            <input id="rpm" class="sr-only" type="range" min="10" max="100" step="0.1" value="45" disabled tabindex="-1" aria-hidden="true">
+            <div class="knob" data-for="rpm" data-unit=" RPM" data-decimals="1" aria-label="Fine speed"></div>
+            <span class="label knob-label">RPM <output id="rpmValue" class="figures">45.0</output></span>
+          </div>
+          <div class="knob-wrap">
+            <input id="volume" class="sr-only" type="range" min="0" max="1" step="0.01" value="0.7" tabindex="-1" aria-hidden="true">
+            <div class="knob" data-for="volume" data-percent aria-label="Volume"></div>
+            <span class="label knob-label">Volume <output id="volumeValue" class="figures">70</output></span>
+          </div>
+        </div>
+        <p class="tech-note figures" id="ratio">1.000× cut speed</p>
+      </div>
+
+      <div class="plate view-plate">
+        <button id="resetView" class="btn" type="button">Reset view</button>
+      </div>
+
+      <p id="status" class="status-line" role="status">Open a record to begin.</p>
+      <p id="fault" class="notice" role="alert" hidden></p>
+    </aside>
+  </div>
+
+  <details class="caveats">
+    <summary>Handling and notes</summary>
+    <div class="help">
+      <ul>
+        <li><strong>Needle:</strong> grab the brass arm and lift it to stop, lower it onto the record to play (a click on the arm toggles it). The Drop / Lift button does the same. Click a groove on the disc to drop it there.</li>
+        <li><strong>Speed and volume:</strong> use the cabinet rail — 33⅓ / 45 / 78 or the fine knob, and the volume knob.</li>
+        <li><strong>Sleeves:</strong> loaded records wait in sleeves beside the cabinet — drag one onto the platter to swap. The record you were playing goes back in its sleeve.</li>
+        <li><strong>Scratch:</strong> hold the disc to stop it; drag around the centre to scratch back and forth. Let go and it plays on from there.</li>
+        <li><strong>Position:</strong> the record turns under a fixed needle. Moving Position while the needle is lifted will not drop it.</li>
+        <li><strong>View:</strong> wheel zooms a little, right-drag swings round the front of the machine, middle-drag dollies. Reset view restores the camera.</li>
+        <li><strong>Speed:</strong> 33⅓ / 45 / 78 or the fine knob. Pitch and duration change together.</li>
+        <li><strong>Sources:</strong> with its groove WAV and JSON the record plays from the vector master; a PNG alone is traced from its pixels and is deliberately lo-fi. The 8-bit viewing picture is not a record.</li>
+        <li>This is a digital stylus, not a guarantee that a physical print would play. Mono, no RIAA. Files stay on this computer; the 3D turntable needs the Three.js library from the internet.</li>
+      </ul>
+      <details class="meta"><summary class="label">Spiral metadata</summary><pre id="metadata">No record open.</pre></details>
+    </div>
+  </details>
+</div>
+<script src="/static/knob.js"></script>
+<script src="/static/player.js"></script>
+<script type="module" src="/static/view.js"></script>
+</body>
+</html>

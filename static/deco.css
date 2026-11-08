@@ -1,0 +1,139 @@
+/* Shared tokens + chrome for the three rooms. Early Art Deco, mid-1920s:
+   ivory lacquer, piano-black lacquer, polished brass, thin black inlay. */
+@font-face{font-family:"Jost";src:url("/static/fonts/jost-wght.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:"Manrope";src:url("/static/fonts/manrope-wght.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
+
+:root{
+  /* Palette (contrast checked: ink/ivory 14.3, ink/recess 11.7, ivory/black 14.3,
+     brass/black 7.6, ink/brass 7.6, muted ink/ivory 6.1, muted ivory/black 8.2,
+     oxblood/ivory 6.1, focus brass-shadow/ivory 3.8). */
+  --ivory:#E7E1D4; --ivory-recess:#D4CDBE;
+  --black:#141310; --soft-black:#2A2620; --bakelite:#1d1612;
+  --brass:#C4A15A; --brass-hi:#E4D09A; --brass-lo:#8A6B2E;
+  --ink:#141310; --ink-muted:#5A4F3F; --ivory-muted:#B5AB97;
+  --oxblood:#8B3530;
+  --focus:var(--brass-lo);
+
+  --display:"Jost","Futura","Century Gothic",sans-serif;
+  --text:"Manrope","Segoe UI",system-ui,sans-serif;
+  --track-plate:.24em; --track-label:.16em;
+
+  --rule:1px; --inlay:1px solid var(--black);
+  --step:6px;               /* one setback in the stepped frame */
+  --ease:cubic-bezier(.2,.7,.1,1); --snap:120ms;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{background:var(--ivory);color:var(--ink)}
+body{margin:0;min-height:100vh;font:400 16px/1.55 var(--text);background:var(--ivory);color:var(--ink);
+  /* the one light: a clear lamp above and left */
+  background-image:radial-gradient(120% 80% at 18% -10%,rgba(255,255,255,.38),rgba(255,255,255,0) 60%);
+  background-attachment:fixed;-webkit-font-smoothing:antialiased}
+.on-black{--focus:var(--brass);color:var(--ivory)}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.sr-only{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* Type roles */
+.plate-title{font:500 14px/1 var(--display);letter-spacing:var(--track-plate);text-transform:uppercase;margin:0}
+.room-name{font:400 clamp(30px,4.2vw,46px)/1 var(--display);letter-spacing:.32em;text-transform:uppercase;margin:0;padding-left:.32em /* balance tracking */}
+.label{font:500 12px/1.2 var(--display);letter-spacing:var(--track-label);text-transform:uppercase}
+.figures{font-family:var(--display);font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1}
+.help{font:400 14px/1.6 var(--text);color:var(--ink-muted);max-width:62ch}
+.on-black .help{color:var(--ivory-muted)}
+
+/* The one motif: stepped setback frame. Outer black, thin brass rule, inset. */
+.stepped{position:relative;background:var(--black);padding:var(--step);
+  box-shadow:inset 0 0 0 1px var(--black),inset 0 0 0 2px var(--brass-lo)}
+.stepped>.inset{position:relative;border:1px solid var(--brass);padding:var(--step)}
+.stepped>.inset>.core{position:relative;background:var(--ivory);border:var(--inlay)}
+.stepped.black-core>.inset>.core{background:var(--black);border-color:var(--soft-black)}
+
+/* Directory line shared by Cutter and Player */
+.directory{display:flex;align-items:center;gap:18px;margin:0 0 28px;font:500 12px/1 var(--display);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--ink-muted)}
+.directory::after{content:"";flex:1;border-top:1px solid var(--black);opacity:.55}
+.directory a{color:var(--ink);text-decoration:none;padding:6px 0;border-bottom:1px solid transparent}
+.directory a:hover{border-bottom-color:var(--brass-lo)}
+.directory [aria-current="page"]{color:var(--ink);border-bottom:1px solid var(--ink);padding:6px 0}
+.directory .sep{color:var(--ink-muted)}
+
+/* Controls */
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{appearance:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:40px;padding:0 18px;
+  font:500 12px/1 var(--display);letter-spacing:var(--track-label);text-transform:uppercase;
+  background:var(--ivory);color:var(--ink);border:1px solid var(--black);border-radius:1px;
+  box-shadow:inset 0 0 0 3px var(--ivory),inset 0 0 0 4px var(--brass-lo);
+  transition:background var(--snap) var(--ease),transform 60ms linear}
+.btn:hover:not(:disabled){background:var(--ivory-recess)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{cursor:default;color:var(--ink-muted);box-shadow:inset 0 0 0 3px var(--ivory),inset 0 0 0 4px var(--ivory-recess)}
+.btn.dark{background:var(--soft-black);color:var(--ivory);border-color:var(--black);box-shadow:inset 0 0 0 3px var(--soft-black),inset 0 0 0 4px var(--brass-lo)}
+.btn.dark:hover:not(:disabled){background:#353027}
+.btn.dark:disabled{color:var(--ivory-muted);box-shadow:inset 0 0 0 3px var(--soft-black),inset 0 0 0 4px #3a352c}
+/* The brass primary: polished metal plate, ink lettering */
+.btn.brass{min-height:52px;padding:0 28px;font-size:16px;font-weight:600;letter-spacing:.22em;color:var(--ink);border:1px solid var(--black);
+  background:linear-gradient(180deg,var(--brass-hi) 0%,var(--brass) 46%,#b8954f 54%,var(--brass) 100%);
+  box-shadow:inset 0 0 0 3px rgba(20,19,16,0),inset 0 0 0 4px var(--brass-lo),inset 0 1px 0 5px rgba(255,255,255,.18)}
+.btn.brass:hover:not(:disabled){background:linear-gradient(180deg,#ecdcaa 0%,#cdab64 46%,#c09c55 54%,#cdab64 100%)}
+.btn.brass:disabled{color:#4a4034;background:#cfc6b3;box-shadow:inset 0 0 0 4px #b9b09c}
+.on-black .btn.brass:disabled{background:#3a352c;color:var(--ivory-muted);box-shadow:inset 0 0 0 4px #4a443a}
+
+/* Plate selectors (radio group styled as engraved plates) */
+.plates{display:inline-grid;grid-auto-flow:column;border:1px solid var(--black);background:var(--black);gap:1px}
+.plates label{position:relative;cursor:pointer}
+.plates input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.plates span{display:block;min-width:54px;padding:10px 12px;text-align:center;background:var(--ivory);
+  font:500 14px/1 var(--display);letter-spacing:.08em;font-variant-numeric:tabular-nums lining-nums;transition:background var(--snap) var(--ease)}
+.plates input:checked+span{background:var(--black);color:var(--brass-hi);box-shadow:inset 0 -2px 0 var(--brass)}
+.plates input:focus-visible+span{outline:2px solid var(--focus);outline-offset:-5px}
+.plates input:disabled+span{color:var(--ink-muted);background:var(--ivory-recess);cursor:default}
+.plates input:disabled{cursor:default}
+.plates input:checked:disabled+span{background:var(--soft-black);color:var(--ivory-muted);box-shadow:inset 0 -2px 0 var(--brass-lo)}
+
+/* Grooved rail (range input) */
+input[type=range].rail{appearance:none;-webkit-appearance:none;width:100%;height:24px;background:transparent;margin:0;cursor:pointer}
+input[type=range].rail::-webkit-slider-runnable-track{height:6px;background:repeating-linear-gradient(90deg,var(--black) 0 1px,#2a2620 1px 4px);border:1px solid var(--black);box-shadow:0 1px 0 rgba(255,255,255,.5)}
+input[type=range].rail::-moz-range-track{height:6px;background:repeating-linear-gradient(90deg,var(--black) 0 1px,#2a2620 1px 4px);border:1px solid var(--black)}
+input[type=range].rail::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:22px;margin-top:-9px;background:linear-gradient(90deg,var(--brass-lo),var(--brass-hi) 45%,var(--brass) 60%,var(--brass-lo));border:1px solid var(--black);border-radius:0}
+input[type=range].rail::-moz-range-thumb{width:10px;height:22px;background:linear-gradient(90deg,var(--brass-lo),var(--brass-hi) 45%,var(--brass) 60%,var(--brass-lo));border:1px solid var(--black);border-radius:0}
+input[type=range].rail:disabled{cursor:default;opacity:.55}
+input[type=range].rail:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* Bakelite knob (drives a hidden native range; see knob.js) */
+.knob-wrap{display:grid;justify-items:center;gap:8px}
+.knob{--turn:0deg;position:relative;width:64px;height:64px;border-radius:50%;cursor:grab;touch-action:none;
+  background:radial-gradient(circle at 36% 30%,#3b2e25 0%,var(--bakelite) 46%,#0c0907 100%);
+  box-shadow:0 0 0 2px var(--black),0 0 0 3px var(--brass),0 0 0 5px var(--black),0 3px 6px rgba(20,19,16,.35)}
+.knob::before{content:"";position:absolute;inset:9px;border-radius:50%;border:1px solid rgba(228,208,154,.22)}
+.knob::after{content:"";position:absolute;left:50%;top:5px;width:3px;height:16px;margin-left:-1.5px;background:var(--brass-hi);transform-origin:50% 27px;transform:rotate(var(--turn))}
+.knob[aria-disabled="true"]{cursor:default;opacity:.5}
+.knob:active{cursor:grabbing}
+.knob:focus-visible{outline:2px solid var(--focus);outline-offset:8px}
+
+/* Engraved indicator */
+.indicator{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--black);color:var(--ivory);border:1px solid var(--black);box-shadow:inset 0 0 0 3px var(--black),inset 0 0 0 4px var(--soft-black)}
+.lamp{flex:none;width:10px;height:10px;border-radius:50%;background:#3a352c;box-shadow:inset 0 0 0 1px #000}
+.lamp[data-state="on"]{background:var(--brass-hi);box-shadow:0 0 6px rgba(228,208,154,.7)}
+.lamp[data-state="busy"]{background:var(--brass);animation:lamp 900ms steps(2,jump-none) infinite}
+.lamp[data-state="error"]{background:var(--oxblood);box-shadow:0 0 0 1px #c98577}
+@keyframes lamp{50%{opacity:.35}}
+.notice{margin:0;padding:10px 16px;border-left:3px solid var(--oxblood);background:var(--ivory);color:var(--oxblood);font:500 14px/1.5 var(--text)}
+.notice[hidden]{display:none}
+
+details.caveats{margin-top:28px;max-width:72ch}
+details.caveats summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:10px;font:500 12px/1 var(--display);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--ink-muted);padding:6px 0}
+details.caveats summary::-webkit-details-marker{display:none}
+details.caveats summary::before{content:"";width:7px;height:7px;border:1px solid currentColor;transform:rotate(45deg);transition:background var(--snap)}
+details.caveats[open] summary::before{background:currentColor}
+details.caveats ul{margin:12px 0 0;padding-left:18px}
+details.caveats li{margin:4px 0}
+
+/* Touch: 44 px targets on small screens */
+@media (max-width:600px),(pointer:coarse){
+  .btn,.btn.small{min-height:44px}
+  .plates span{padding:16px 12px}
+  .directory a,.directory [aria-current="page"]{padding:16px 0}
+  details.caveats summary{padding:16px 0}
+  input[type=range].rail{height:44px}
+}

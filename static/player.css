@@ -1,0 +1,51 @@
+/* Player: the parlour cabinet. Pale ivory face; the black disc is the jewel in a stepped well. */
+.cabinet{max-width:1320px;margin:clamp(16px,3vw,40px) auto;padding:clamp(22px,4vw,56px);border:1px solid var(--black);
+  box-shadow:inset 0 0 0 6px var(--ivory),inset 0 0 0 7px var(--brass-lo)}
+.cabinet-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin:0 0 26px;padding-bottom:18px;border-bottom:1px solid var(--black)}
+.record-card{margin:0;display:grid;justify-items:end;gap:6px;text-align:right}
+.record-name{font:500 16px/1.1 var(--display);letter-spacing:.14em;text-transform:uppercase;overflow-wrap:anywhere}
+.record-facts{font-size:14px;letter-spacing:.06em;color:var(--ink-muted)}
+
+.cabinet-body{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:clamp(22px,3vw,40px);align-items:start}
+@media (max-width:980px){.cabinet-body{grid-template-columns:1fr}}
+
+/* The well */
+.well .core{overflow:hidden}
+#view{height:clamp(380px,70vh,700px);background:var(--black);position:relative;touch-action:none}
+#view canvas{display:block;width:100%;height:100%}
+#viewFallback{margin:0;padding:18px;color:var(--ivory-muted);font:400 14px/1.5 var(--text)}
+.well[data-drop] .core{box-shadow:inset 0 0 0 2px var(--brass)}
+.invite{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);width:min(460px,calc(100% - 40px));padding:16px 18px;text-align:center;pointer-events:none;
+  color:var(--ivory);background:rgba(20,19,16,.86);border:1px solid var(--brass-lo);transition:opacity 180ms var(--ease)}
+.invite .plate-title{color:var(--brass-hi)}
+.invite-help{margin:8px 0 0;font:400 14px/1.5 var(--text);color:var(--ivory-muted)}
+.nowrap{white-space:nowrap}
+body[data-record="open"] .invite{opacity:0;visibility:hidden}
+
+/* The nameplate rail */
+.rail{display:grid;gap:0;border:1px solid var(--black);background:var(--ivory-recess)}
+.plate{padding:18px 20px;border-bottom:1px solid var(--black);display:grid;gap:12px}
+.plate:last-of-type{border-bottom:0}
+.rail .btn{width:100%}
+.needle-plate{background:var(--ivory)}
+.needle-plate .btn.brass{min-height:58px}
+.tech{display:grid;gap:8px}
+.tech .plates.small span{min-width:0;padding:8px 12px;font-size:12px;letter-spacing:var(--track-label);text-transform:uppercase}
+.tech .plates{grid-template-columns:1fr 1fr;display:grid}
+.tech-note{margin:0;font:400 14px/1.45 var(--text);color:var(--ink-muted)}
+.indicator .readout{display:grid;gap:3px;min-width:0}
+.indicator .state{font:500 12px/1.2 var(--display);letter-spacing:var(--track-label);text-transform:uppercase}
+.indicator .sub{font:400 14px/1.3 var(--display);color:var(--ivory-muted);letter-spacing:.04em}
+.rail-label{margin-bottom:-6px;color:var(--ink-muted)}
+.speed-plate .plates{width:100%;grid-template-columns:repeat(3,1fr);display:grid}
+.knobs{display:flex;justify-content:space-around;padding:6px 0 2px}
+.knob-label{color:var(--ink-muted)}
+.knob-label output{color:var(--ink);margin-left:4px}
+.status-line{margin:0;padding:12px 20px 16px;font:400 14px/1.5 var(--text);color:var(--ink-muted);border-top:1px solid var(--black);background:var(--ivory)}
+.status-line:empty{display:none}
+.rail .notice{border-top:1px solid var(--black)}
+
+.caveats .meta{margin-top:16px}
+.caveats .meta summary{cursor:pointer;color:var(--ink-muted)}
+.caveats pre{max-height:320px;overflow:auto;padding:16px;background:var(--ivory-recess);border:1px solid var(--black);font:400 12px/1.45 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap}
+@media (max-width:600px),(pointer:coarse){.tech .plates.small span{padding:16px 12px}}

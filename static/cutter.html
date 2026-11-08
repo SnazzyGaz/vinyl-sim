@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cutter — digital vinyl</title>
+<link rel="stylesheet" href="/static/deco.css">
+<link rel="stylesheet" href="/static/cutter.css">
+</head>
+<body class="room-cutter" data-state="idle">
+<div class="atelier">
+  <nav class="directory" aria-label="Directory">
+    <span>Directory</span><span class="sep" aria-hidden="true">·</span>
+    <a href="/">Home</a><span class="sep" aria-hidden="true">·</span>
+    <span aria-current="page">Cutter</span><span class="sep" aria-hidden="true">·</span>
+    <a href="/player">Player</a>
+  </nav>
+  <header class="atelier-head">
+    <h1 class="room-name">Cutter</h1>
+    <p class="head-note">Audio in, a 16-bit PNG record out.</p>
+  </header>
+
+  <main id="desk" class="desk stepped black-core on-black">
+    <div class="inset"><div class="core desk-core">
+
+      <!-- 1 · Source -->
+      <section class="cluster blotter" aria-labelledby="srcTitle">
+        <h2 class="plate-title" id="srcTitle">Source</h2>
+        <fieldset class="choice">
+          <legend class="sr-only">Audio to cut</legend>
+          <label class="option"><input type="radio" name="src" value="file" checked><span>Your audio file</span></label>
+          <div class="file-row">
+            <input id="audioFile" class="sr-only" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a" tabindex="-1">
+            <button id="choose" class="btn" type="button">Choose audio…</button>
+            <span id="fileName" class="file-name">No file chosen</span>
+          </div>
+          <label class="option"><input type="radio" name="src" value="sample"><span>The original 11-second tune</span></label>
+        </fieldset>
+
+        <div class="size">
+          <span class="label" id="sizeLabel">Map size</span>
+          <div class="plates" role="radiogroup" aria-labelledby="sizeLabel">
+            <label><input type="radio" name="size" value="4096" checked><span>4096</span></label>
+            <label><input type="radio" name="size" value="2048"><span>2048</span></label>
+          </div>
+          <p class="note" id="sizeNote">4096 follows the groove radius for bandwidth; 2048 is lighter and duller.</p>
+        </div>
+
+        <button id="cut" class="btn brass engage" type="button" disabled>Cut</button>
+        <p class="note">Up to eight minutes; longer audio is truncated.</p>
+      </section>
+
+      <!-- 2 · Lathe -->
+      <section class="cluster lathe" aria-labelledby="latheTitle">
+        <h2 class="plate-title brass-plate" id="latheTitle">Lathe</h2>
+        <div class="platter">
+          <svg class="platter-art" viewBox="0 0 300 300" aria-hidden="true">
+            <circle cx="150" cy="150" r="146" fill="#2A2620" stroke="#8A6B2E"/>
+            <circle cx="150" cy="150" r="134" fill="#141310" stroke="#C4A15A" stroke-width=".8"/>
+            <g class="blank-grooves" fill="none" stroke="#2A2620">
+              <circle cx="150" cy="150" r="118"/><circle cx="150" cy="150" r="102"/><circle cx="150" cy="150" r="86"/><circle cx="150" cy="150" r="70"/>
+            </g>
+            <circle cx="150" cy="150" r="44" fill="#D4CDBE" stroke="#141310"/>
+            <circle cx="150" cy="150" r="37" fill="none" stroke="#8A6B2E"/>
+            <circle cx="150" cy="150" r="4" fill="#C4A15A"/>
+          </svg>
+          <img id="proof" class="proof" alt="Proof of the cut record" hidden>
+          <p class="blank-caption">A blank, waiting to be cut</p>
+        </div>
+
+        <div class="indicator" aria-live="polite">
+          <span class="lamp" id="lamp" data-state="off" aria-hidden="true"></span>
+          <p id="status" class="readout">Choose audio, then Cut.</p>
+        </div>
+
+        <div id="traverseWrap" class="traverse-wrap" hidden>
+          <div id="traverse" class="traverse" role="progressbar" aria-label="Cutting progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span class="stop" style="--at:.14"></span><span class="stop" style="--at:.72"></span><span class="stop" style="--at:.88"></span>
+            <span class="carriage"></span>
+          </div>
+          <p class="traverse-meta"><span id="traverseText">Cutting</span><span id="elapsed" class="figures">0 s</span></p>
+        </div>
+      </section>
+
+      <!-- 3 · Delivery -->
+      <section class="cluster blotter delivery" aria-labelledby="delTitle">
+        <h2 class="plate-title" id="delTitle">Delivery</h2>
+        <label class="label" for="recordName">Record name</label>
+        <input id="recordName" class="name-field" type="text" spellcheck="false" autocomplete="off" disabled>
+        <p id="emptyFiles" class="note">Nothing cut yet.</p>
+        <ul id="files" class="files"></ul>
+        <button id="saveSet" class="btn dark-ink" type="button" disabled>Save set to folder…</button>
+        <p class="note" id="saveHint">Pick a folder; the ticked files are written there with the record name. Use Save as… for a single file.</p>
+        <p id="fault" class="notice" role="alert" hidden></p>
+        <div class="secondary">
+          <button id="build" class="btn small" type="button" disabled>Build 3D mesh · GLB / STL</button>
+        </div>
+      </section>
+
+    </div></div>
+  </main>
+
+  <details class="caveats">
+    <summary>Notes on the cut</summary>
+    <div class="help"><ul>
+      <li>The cut runs on this computer through <code>serve.py</code>. Uploaded audio is deleted once it is cut; nothing goes online.</li>
+      <li>The groove master WAV is the prepared groove itself (mono, filtered, normalised), not a copy of your upload. Keep it and the JSON beside the PNG under the same name to play from the vector master.</li>
+      <li>A PNG on its own still plays, traced from its pixels, but it is deliberately lo-fi rather than MP3 quality. A 4096 map cannot hold a whole LP of full-band grooves.</li>
+      <li>The viewing picture is an 8-bit image with the paper label; it is not a record and the Player will refuse it.</li>
+      <li>The 3D mesh is for printing or viewing in millimetres. It is not used for playback, and nothing here guarantees a physical print would play.</li>
+    </ul></div>
+  </details>
+</div>
+<script src="/static/cutter.js"></script>
+</body>
+</html>

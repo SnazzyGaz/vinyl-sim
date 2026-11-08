@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital vinyl — directory</title>
+<link rel="stylesheet" href="/static/deco.css">
+<style>
+  body{display:grid;place-items:center;padding:48px 20px}
+  .card{width:min(560px,100%)}
+  .card .core{padding:44px 48px 36px}
+  .mark{display:block;margin:0 auto 22px;width:46px;height:46px}
+  .card h1{text-align:center;font:400 16px/1 var(--display);letter-spacing:.42em;padding-left:.42em;text-transform:uppercase;margin:0}
+  .card .sub{text-align:center;margin:12px 0 30px;font:400 12px/1.4 var(--display);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--ink-muted)}
+  .rooms{list-style:none;margin:0;padding:0;border-top:1px solid var(--black)}
+  .rooms li{border-bottom:1px solid var(--black)}
+  .rooms a{display:grid;grid-template-columns:auto 1fr auto;align-items:baseline;gap:18px;padding:20px 6px;color:var(--ink);text-decoration:none;transition:background var(--snap) var(--ease)}
+  .rooms a:hover{background:var(--ivory-recess)}
+  .rooms .name{font:500 24px/1 var(--display);letter-spacing:.28em;text-transform:uppercase}
+  .rooms .what{font:400 14px/1.4 var(--text);color:var(--ink-muted)}
+  .rooms .go{font:500 12px/1 var(--display);letter-spacing:var(--track-label);text-transform:uppercase}
+  .rooms .go::after{content:"";display:inline-block;width:6px;height:6px;margin-left:8px;border-top:1px solid currentColor;border-right:1px solid currentColor;transform:translateY(-1px) rotate(45deg)}
+  .foot{margin:26px 0 0;text-align:center;font:400 14px/1.5 var(--text);color:var(--ink-muted)}
+  @media (max-width:520px){.card .core{padding:32px 22px 26px}.rooms a{grid-template-columns:1fr auto}.rooms .what{grid-column:1/-1;grid-row:2}}
+</style>
+</head>
+<body>
+<main class="card stepped" aria-labelledby="title">
+  <div class="inset"><div class="core">
+    <!-- single stepped diamond: the only ornament on this card -->
+    <svg class="mark" viewBox="0 0 46 46" aria-hidden="true">
+      <path d="M23 1 45 23 23 45 1 23Z" fill="none" stroke="#141310"/>
+      <path d="M23 7 39 23 23 39 7 23Z" fill="none" stroke="#8A6B2E"/>
+      <path d="M23 13 33 23 23 33 13 23Z" fill="#141310"/>
+    </svg>
+    <h1 id="title">Digital vinyl</h1>
+    <p class="sub">Two rooms · local to this computer</p>
+    <ul class="rooms">
+      <li><a href="/cutter"><span class="name">Cutter</span><span class="what">Cut audio into a 16-bit PNG record</span><span class="go">Enter</span></a></li>
+      <li><a href="/player"><span class="name">Player</span><span class="what">Open a record and drop the needle</span><span class="go">Enter</span></a></li>
+    </ul>
+    <p class="foot">A digital stylus for height-map records. Nothing leaves this machine.</p>
+  </div></div>
+</main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# generated and local
+output/
+__pycache__/
+*.pyc
+.venv/
+vinyl-project.zip
+*.pre-sleeves.js
+*.pre-phonograph.js
+.DS_Store
+server.log

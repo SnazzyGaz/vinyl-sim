@@ -1,0 +1,281 @@
+{
+  "project": "/workspace/vinyl-project",
+  "run": "python3 serve.py --port 8765",
+  "url": "http://127.0.0.1:8765/",
+  "sample_metadata": {
+    "encoding_version": "vinyl-heightmap-lateral-v2",
+    "rpm_cut": 45.0,
+    "pitch_mm": 2.0,
+    "r_start_mm": 86.0,
+    "disc_radius_mm": 90.0,
+    "label_radius_mm": 27.0,
+    "amp_mm": 0.3,
+    "groove_width_mm": 0.8,
+    "groove_depth_mm": 0.45,
+    "thickness_mm": 2.5,
+    "sample_rate": 16000,
+    "duration_sec": 11.63475,
+    "lead_in_turns": 0.35,
+    "lead_out_turns": 0.5,
+    "image_size": 4096,
+    "height_scale_mm": 2.55,
+    "audio_storage": "Explicit prepared-displacement vector master + PNG depth export; never the original upload.",
+    "riaa": "none (custom reversible presence shelf, not RIAA)",
+    "max_duration_sec": 480,
+    "warning": "Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.",
+    "packing_mode": "outer-band-if-room-v1",
+    "height_polarity": "inverted",
+    "bandlimit_mode": "radius-following-v1",
+    "bandlimit_cap_hz": 6500.0,
+    "filter_window_samples": 1024,
+    "filter_hop_samples": 256,
+    "raster_subsamples": 4,
+    "preemphasis": "presence-shelf-v1",
+    "presence_shelf": {
+      "frequency_hz": 1500.0,
+      "gain_db": 6.0,
+      "slope": 1.0,
+      "b": [
+        1.735191860875051,
+        -2.2749495535019215,
+        0.856813588517222
+      ],
+      "a": [
+        1.0,
+        -1.0610999090993012,
+        0.37815580498965284
+      ],
+      "coefficient_sample_rate": 16000
+    },
+    "bandlimit_hz": 3200.453040710104,
+    "bandlimit_outer_hz": 4023.6874680684077,
+    "vector_master": {
+      "format": "pcm16-mono-displacement-v1",
+      "sample_count": 186156,
+      "sha256": "f473d764a47a7ec79a4c6a86567fae262a687ec4c04064fa24a476aece8865ca",
+      "meaning": "Prepared lateral displacement / amp_mm; adaptive-filtered, presence-emphasized, peak-normalized. Not the original upload."
+    }
+  },
+  "quality_vs_bandlimited_original": {
+    "pearson": 0.9974615763016175,
+    "gain_aligned_snr_db": 22.949574570341696,
+    "alignment_lag_samples": 0,
+    "gain": 1.0498111598687172
+  },
+  "quality_vs_fullband_original": {
+    "pearson": 0.9968487382335063,
+    "gain_aligned_snr_db": 22.011702760583304,
+    "alignment_lag_samples": 0,
+    "gain": 1.397474796839742
+  },
+  "vector_vs_prepared_deemphasized_reference": {
+    "pearson": 0.9999999993050591,
+    "gain_aligned_snr_db": 88.57018592121779,
+    "alignment_lag_samples": 0,
+    "gain": 0.9999999100475332
+  },
+  "png_vs_same_vector_reference": {
+    "pearson": 0.9972660294111839,
+    "gain_aligned_snr_db": 22.627702511615976,
+    "alignment_lag_samples": 0,
+    "gain": 1.0499713277540232
+  },
+  "vector_vs_fullband_original": {
+    "pearson": 0.9998895645511273,
+    "gain_aligned_snr_db": 36.55881894859452,
+    "alignment_lag_samples": 0,
+    "gain": 1.3313747115491714
+  },
+  "reference_definitions": {
+    "vector": "Prepared mono -> inverse presence shelf only; PCM16 quantization error, no second lowpass.",
+    "png_same_vector": "PNG-traced output compared with that same de-emphasized prepared reference; includes raster and cleanup changes.",
+    "png_raster_only": "Prepared reference also receives PNG-side adaptive cleanup and inverse shelf; isolates raster loss.",
+    "fullband": "Original mono, no cut preparation; gain-fitted comparison. Instrumental test only, not vocals."
+  },
+  "vector_format": "PCM16 mono WAV of prepared displacement; r = r_nominal + amp_mm * (PCM / 32768), paired JSON metadata and SHA256. Inverse shelf only during vector playback, no second lowpass.",
+  "quality_definition": "Legacy-named quality_vs_bandlimited_original and quality_vs_fullband_original are PNG-trace metrics. Mono source -> +6 dB minimum-phase shelf -> radius-following Hann STFT filtering -> peak normalization -> groove sample times -> identical decode-side adaptive cleanup and inverse shelf. This measures raster/centroid loss, not full-band fidelity. Gain-aligned SNR and +/-10 ms lag search exclude edge transients. Full-band comparison is separately reported.",
+  "mesh": {
+    "vertices": 16642,
+    "triangles": 33280,
+    "watertight": true,
+    "volume_mm3": 62761.94209506517,
+    "radial_segments": 64,
+    "angular_segments": 256,
+    "warning": "Preview-resolution relief from PNG depth pixels; vector master (when supplied) remains playback source. Tiny grooves can be lost, especially on long recordings. Not a playable physical record guarantee."
+  },
+  "reopened_meshes": {
+    "glb": {
+      "vertices": 16642,
+      "triangles": 33280,
+      "watertight": true,
+      "valid": true,
+      "z_min": 0.0,
+      "z_max": 2.5
+    },
+    "stl": {
+      "vertices": 16642,
+      "triangles": 33280,
+      "watertight": true,
+      "valid": true,
+      "z_min": 0.0,
+      "z_max": 2.5
+    }
+  },
+  "mesh_note": "New inverted PNG tested with cheap 64x256 mesh; old huge sample-disc GLB/STL not refreshed and not shipped.",
+  "checks": {
+    "png_only_reimport_exact": true,
+    "standard_inverted_audio_exact": true,
+    "vector_preferred_when_present": true,
+    "vector_not_double_filtered": true,
+    "vector_json_only_import_and_png_rebuild_exact": true,
+    "vector_standard_polarity_rebuild": true,
+    "mismatched_vector_rejected": true,
+    "preview_max_8bit": 26,
+    "preview_import_rejected": true,
+    "mesh_flat_center_cap": true,
+    "unknown_polarity_rejected": true,
+    "stored_surface_16bit": 1285,
+    "stored_max_16bit": 12629,
+    "inverse_shelf_max_error": 3.1086244689504383e-15,
+    "legacy_2048_quality": {
+      "pearson": 0.9865685969360956,
+      "gain_aligned_snr_db": 15.737750706454406,
+      "alignment_lag_samples": 0,
+      "gain": 1.1002751154725046
+    },
+    "2048_4096_duration_packing": true
+  },
+  "verification_seconds": 16.552388537995284,
+  "visual_fix": {
+    "preview": "RingGeometry with label-radius hole; explicit black albedo 0x141416, roughness .42, metalness 0; dark texture used only for bump, not albedo.",
+    "mesh": "GLB materials explicitly replaced with same black material; no vertex colour dependence. Flat physical label cap.",
+    "label": "Separate brown label at thickness + 0.3 mm with polygonOffset; no coplanar preview overlap.",
+    "lights": "Hemisphere .45, key .85"
+  },
+  "browser_tested": false,
+  "browser_note": "Real pinned OrbitControls/camera/raycast and ring/label/material/light tests with mocked DOM/renderer; no real browser/WebGL rendering or listening audition. Dark preview PNG inspected separately.",
+  "caveats": [
+    "Vector avoids raster/grid loss but retains the existing adaptive preparation (~3.2\u20134 kHz on this sample). It cannot recover frequencies already filtered out. Still lo-fi mono.",
+    "2x2 subpixel raster averaging reduces grid beating but cannot eliminate all alias/laser artifacts at 4096, especially tight long-track grooves.",
+    "Custom presence shelf is not RIAA. Inverse shelf is exact digitally, but raster loss is not reversible.",
+    "16-bit PNG stores physical surface heights in inverted visual polarity plus spiral/filter metadata, never hidden PCM/MP3.",
+    "Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload or reduced mesh.",
+    "GLB/STL are visualization reliefs; physical print/stylus playability is not guaranteed.",
+    "New exports use v2 because old v1 decoders silently ignored polarity; this decoder reads both v1 and v2.",
+    "Pinned three.js/OrbitControls CDN needs internet; local Python processing and audio are local.",
+    "8 minutes maximum, 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features."
+  ],
+  "files": {
+    "sample.png": "/workspace/vinyl-project/output/sample.png",
+    "sample.json": "/workspace/vinyl-project/output/sample.json",
+    "sample.groove.wav": "/workspace/vinyl-project/output/sample.groove.wav",
+    "sample-decoded.wav": "/workspace/vinyl-project/output/sample-decoded.wav",
+    "sample-png-decoded.wav": "/workspace/vinyl-project/output/sample-png-decoded.wav",
+    "sample-bandlimited-reference.wav": "/workspace/vinyl-project/output/sample-bandlimited-reference.wav",
+    "sample-preview.png": "/workspace/vinyl-project/output/sample-preview.png",
+    "sample-playback.wav": "/workspace/vinyl-project/output/sample-playback.wav"
+  },
+  "three_minute_stress_test": {
+    "metadata": {
+      "encoding_version": "vinyl-heightmap-lateral-v2",
+      "rpm_cut": 33.3333333333,
+      "pitch_mm": 0.9915716410520493,
+      "r_start_mm": 146.0,
+      "disc_radius_mm": 150.0,
+      "label_radius_mm": 43.0,
+      "amp_mm": 0.1586514625683279,
+      "groove_width_mm": 0.49578582052602466,
+      "groove_depth_mm": 0.45,
+      "thickness_mm": 2.5,
+      "sample_rate": 16000,
+      "duration_sec": 180.0,
+      "lead_in_turns": 0.35,
+      "lead_out_turns": 0.5,
+      "image_size": 4096,
+      "height_scale_mm": 2.55,
+      "audio_storage": "Explicit prepared-displacement vector master + PNG depth export; never the original upload.",
+      "riaa": "none (custom reversible presence shelf, not RIAA)",
+      "max_duration_sec": 480,
+      "warning": "Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.",
+      "packing_mode": "outer-band-if-room-v1",
+      "height_polarity": "inverted",
+      "bandlimit_mode": "radius-following-v1",
+      "bandlimit_cap_hz": 6500.0,
+      "filter_window_samples": 1024,
+      "filter_hop_samples": 256,
+      "raster_subsamples": 4,
+      "preemphasis": "presence-shelf-v1",
+      "presence_shelf": {
+        "frequency_hz": 1500.0,
+        "gain_db": 6.0,
+        "slope": 1.0,
+        "b": [
+          1.735191860875051,
+          -2.2749495535019215,
+          0.856813588517222
+        ],
+        "a": [
+          1.0,
+          -1.0610999090993012,
+          0.37815580498965284
+        ],
+        "coefficient_sample_rate": 16000
+      },
+      "bandlimit_hz": 974.7792665043963,
+      "bandlimit_outer_hz": 3053.5987979803253,
+      "vector_master": {
+        "format": "pcm16-mono-displacement-v1",
+        "sample_count": 2880000,
+        "sha256": "e3047fc915173657704540d0a01e5bd36e2934d1913ed302fbe62fec0229b930",
+        "meaning": "Prepared lateral displacement / amp_mm; adaptive-filtered, presence-emphasized, peak-normalized. Not the original upload."
+      }
+    },
+    "quality": {
+      "pearson": 0.9901550413354323,
+      "gain_aligned_snr_db": 17.078991918921844,
+      "alignment_lag_samples": 0,
+      "gain": 1.1237231825718892
+    },
+    "seconds": 13.684331450996979,
+    "source": "Original instrumental demo slowed 3x then tiled to 180 seconds; not a vocal benchmark.",
+    "playback_path_tested": "Explicit PNG-only raster regression; vector companion not used for this metric."
+  },
+  "http_verification": {
+    "loopback_page": true,
+    "three_pages": true,
+    "png_only_http_import": true,
+    "new_2048_http_encode": true,
+    "vector_plus_png_import": true,
+    "vector_json_only_import": true,
+    "vector_download_and_no_store": true,
+    "playback_wav_get": true,
+    "upload_deleted": true,
+    "server_stopped": true
+  },
+  "javascript_verification": {
+    "player": {
+      "passed": true,
+      "output": "PASS: explicit vector/PNG playback routing and vector needle buffer, drop/lift, seek, radial placement, 78/45 speed/pitch/time ratio. Mocked DOM/audio, not a browser test."
+    },
+    "camera_material_label": {
+      "passed": true,
+      "output": "PASS: real OrbitControls right-drag orbit, wheel/distance clamps, reset, left needle unchanged, raycast after moved camera, orbit does not lift playback; preview ring/label separation, dim lights and black GLB override. Mocked renderer/DOM, not WebGL."
+    },
+    "app_syntax": {
+      "passed": true,
+      "output": ""
+    },
+    "view_syntax": {
+      "passed": true
+    }
+  },
+  "bundle": {
+    "path": "/workspace/vinyl-project/vinyl-project.zip",
+    "excludes": [
+      "Huge GLB/STL",
+      "old HTTP sessions",
+      "long-test artifacts",
+      "caches"
+    ]
+  }
+}
