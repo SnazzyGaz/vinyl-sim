@@ -24,7 +24,7 @@ try {
   }
   const root=new Element(),view=new Element(),reset=new Element();let tick;
   const THREE={...real,WebGLRenderer:class{constructor(){this.domElement=new Element();}setPixelRatio(){}setSize(){}render(scene,camera){scene.updateMatrixWorld();camera.updateMatrixWorld();}},TextureLoader:class{load(url,onLoad,onProgress,onError){onError?.(new Error('no texture in test'));}}};
-  let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
+  let spatial;let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={setListener(position,forward,up,mouth,refDistance){spatial={position:position.clone(),forward:forward.clone(),up:up.clone(),mouth:mouth.clone(),refDistance};},record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
   const win=new Element();win.vinyl=vinyl;
   const context={THREE,OrbitControls,document:{getElementById:id=>({view,resetView:reset,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
   vm.createContext(context);
@@ -37,6 +37,15 @@ try {
    for(const n of ['volume-knob','speed-lever','source-switch'])assert.equal(phonograph.getObjectByName(n),undefined,n+' removed');}
   const metadata={disc_radius_mm:90,label_radius_mm:27,thickness_mm:2.5,r_start_mm:86,pitch_mm:5,lead_in_turns:.35,rpm_cut:45,amp_mm:.3};
   vinyl.record={metadata,base:'/unused/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
+  // The same frame sends world-space horn/camera vectors, with reset gain at unity.
+  const close=(a,b)=>assert.ok(a.distanceTo(b)<1e-7);
+  close(spatial.mouth,new real.Vector3(-18,24.3,124.2));close(spatial.position,camera.position);
+  close(spatial.forward,camera.getWorldDirection(new real.Vector3()));
+  close(spatial.up,new real.Vector3(0,1,0).transformDirection(camera.matrixWorld));
+  assert.ok(Math.abs(spatial.refDistance-spatial.position.distanceTo(spatial.mouth))<1e-7);
+  {const ph=context.api.phonograph;ph.position.set(12,-8,5);ph.rotation.z=.3;tick();
+   const horn=ph.getObjectByName('horn');close(spatial.mouth,horn.localToWorld(horn.userData.mouth.clone()));
+   ph.position.set(0,0,0);ph.rotation.z=0;tick();}
   // Preview is a ring, not a full disc hidden behind a nearly-coplanar label.
   assert.equal(disc.getObjectByName('placeholder-disc'),undefined);assert.equal(disc.children[0].geometry.type,'RingGeometry');
   assert.equal(disc.children[0].geometry.parameters.innerRadius,metadata.label_radius_mm);
@@ -51,7 +60,7 @@ try {
   const lights=scene.children.filter(o=>o.isLight);assert.ok(lights.every(o=>o.intensity<=1));
   const event=(x,y,button)=>({pointerId:1,pointerType:'mouse',button,clientX:x,clientY:y,pageX:x,pageY:y,ctrlKey:false,metaKey:false,shiftKey:false});
   const initial=camera.position.clone();canvas.emit('pointerdown',event(400,300,2));canvas.emit('pointermove',event(520,350,2));canvas.emit('pointerup',event(520,350,2));
-  for(let i=0;i<80;i++)tick();assert.ok(camera.position.distanceTo(initial)>1);assert.equal(lifts,0);assert.equal(placements.length,0);assert.equal(vinyl.down,true);
+  for(let i=0;i<80;i++)tick();assert.ok(camera.position.distanceTo(initial)>1);assert.equal(lifts,0);assert.equal(placements.length,0);assert.equal(vinyl.down,true);close(spatial.position,camera.position);
   const middleBefore=camera.position.distanceTo(controls.target);canvas.emit('pointerdown',event(400,300,1));canvas.emit('pointermove',event(400,380,1));canvas.emit('pointerup',event(400,380,1));tick();assert.notEqual(camera.position.distanceTo(controls.target),middleBefore);assert.equal(lifts,0);assert.equal(placements.length,0);
   const before=camera.position.distanceTo(controls.target);canvas.emit('wheel',{deltaY:-100,deltaMode:0,clientX:400,clientY:300});tick();assert.ok(camera.position.distanceTo(controls.target)<before);
   for(let i=0;i<200;i++)canvas.emit('wheel',{deltaY:-100,deltaMode:0,clientX:400,clientY:300});tick();assert.ok(camera.position.distanceTo(controls.target)>=controls.minDistance-1e-8);
@@ -110,7 +119,7 @@ try {
    const h=context.api.hula;for(let i=0;i<40;i++){tick();}assert.ok(h.env>.1,'loudness envelope follows the audio');let peak=0;for(let i=0;i<60;i++){tick();peak=Math.max(peak,Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz));}assert.ok(peak>.03,'she sways on the spring');
    vinyl.down=false;for(let i=0;i<60;i++)tick();assert.ok(h.env<.05,'needle up: no drive');for(let i=0;i<900;i++)tick();assert.ok(Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz)<.01,'spring damps back to rest');
    vinyl.record={metadata:{...metadata,disc_radius_mm:100},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
-   assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);
+   assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);close(spatial.mouth,new real.Vector3(-20,27,138));assert.ok(Math.abs(spatial.refDistance-camera.position.distanceTo(spatial.mouth))<1e-7);
    assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');vinyl.buffer=null;}
-  console.log('PASS: clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, dim lights, piano-black scene, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
+  console.log('PASS: horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, dim lights, piano-black scene, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

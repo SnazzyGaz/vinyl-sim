@@ -9,7 +9,7 @@ const radio=(name,value,checked=false)=>({name,value,checked,disabled:false,onch
 const groups={source:[radio('source','vector'),radio('source','png')],rpmPreset:[radio('rpmPreset','33.333333'),radio('rpmPreset','45',true),radio('rpmPreset','78')]};
 global.document={body:{dataset:{}},getElementById:element,querySelectorAll(sel){const m=/name=(\w+)/.exec(sel);return m?groups[m[1]]:[];},createElement(){return{};}};
 global.window=global;global.setInterval=()=>{};const events=[];global.dispatchEvent=e=>{events.push(e);};global.CustomEvent=class{constructor(name,obj){this.type=name;this.detail=obj.detail;}};
-const made=[];class AudioContext{constructor(){this.currentTime=0;this.destination={};}createGain(){return {gain:{value:1},connect(){}};}async resume(){}
+const made=[];class AudioContext{constructor(){this.currentTime=0;this.destination={};this.listener={};}createGain(){return {gain:{value:1},connect(){}};}createPanner(){return {connect(){}};}async resume(){}
  createBuffer(ch,len,rate){const d=new Float32Array(len);const b={length:len,sampleRate:rate,duration:len/rate,numberOfChannels:ch,getChannelData(){return d;}};made.push(b);return b;}
  createBufferSource(){return {playbackRate:{value:1},connect(){},start(){},stop(){}};}}
 global.AudioContext=AudioContext;

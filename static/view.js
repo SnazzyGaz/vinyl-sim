@@ -363,7 +363,7 @@ function buildPhonograph(R){
   new THREE.Vector3(px-R*.74,py+R*.36,R*1.22),
   new THREE.Vector3(px-R*1.32,py-R*.18,R*1.38)],false,'centripetal');
  const {geometry,rim}=hornGeometry(curve,5,R*.86);
- const horn=new THREE.Mesh(geometry,brass);horn.name='horn';phonograph.add(horn);
+ const horn=new THREE.Mesh(geometry,brass);horn.name='horn';horn.userData.mouth=curve.points.at(-1).clone();phonograph.add(horn);
  const bead=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rim,true),256,R*.012,8,true),brass);phonograph.add(bead);
  const collar=new THREE.Mesh(new THREE.CylinderGeometry(7,7,8,24),brass);collar.rotation.x=Math.PI/2;collar.position.set(px,py,HINGE_Z+6);phonograph.add(collar);
  // table level (underside of the plinth) and the dashboard hula girl
@@ -436,6 +436,16 @@ function loudness(v,t){
  for(let i=Math.max(0,c-n),e=Math.min(ch.length,c+n);i<e;i+=4){s+=ch[i]*ch[i];k++;}
  return k?Math.sqrt(s/k):0;
 }
+// Reuse vectors; the horn mesh is rebuilt whenever the record radius changes.
+const audioPosition=new THREE.Vector3(),audioForward=new THREE.Vector3(),audioUp=new THREE.Vector3(),audioMouth=new THREE.Vector3(),audioReset=new THREE.Vector3();
+function updateAudioListener(){
+ const horn=phonograph.getObjectByName('horn');if(!horn||!window.vinyl.setListener)return;
+ horn.localToWorld(audioMouth.copy(horn.userData.mouth));
+ camera.getWorldPosition(audioPosition);camera.getWorldDirection(audioForward);
+ audioUp.set(0,1,0).transformDirection(camera.matrixWorld); // camera's actual rolled/pitched up
+ audioReset.set(R*1.02,-R*6.0,R*2.35);
+ window.vinyl.setListener(audioPosition,audioForward,audioUp,audioMouth,audioReset.distanceTo(audioMouth));
+}
 function frame(){requestAnimationFrame(frame);const v=window.vinyl,r=v.record;let energy=0;if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed) v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();disc.rotation.z=v.state.rotation;
  let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
  const rad=m.r_start_mm-m.pitch_mm*th/(2*Math.PI)+m.amp_mm*d;
@@ -444,4 +454,4 @@ function frame(){requestAnimationFrame(frame);const v=window.vinyl,r=v.record;le
  energy=loudness(v,t);
  }else tonearm.visible=false;
  updateHula(energy);updateSleeves();
- controls.update();renderer.render(scene,camera);}frame();
+ controls.update();updateAudioListener();renderer.render(scene,camera);}frame();

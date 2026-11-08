@@ -5,7 +5,7 @@
    bindings to the new cabinet controls and the status wording differ. */
 (() => {
 const $=id=>document.getElementById(id);
-let record=null, ctx=null, buffer=null, vectorBuffer=null, pngBuffer=null, reverseBuffer=null, source=null, gain=null, down=false;
+let record=null, ctx=null, buffer=null, vectorBuffer=null, pngBuffer=null, reverseBuffer=null, source=null, gain=null, panner=null, down=false;
 let position=0, audioAnchor=0, rpm=45, busy=false;
 let lastGrabAngle=0, lastGrabTime=0, scratchUsingReverse=false, scratchStart=0, scratchAbsRate=0;
 const state={angle:Math.PI*.2,rotation:0,dragging:false,grabbed:false};
@@ -28,7 +28,24 @@ function time(){
 }
 function silence(){if(source){source.onended=null;try{source.stop();}catch{}source=null;}scratchAbsRate=0;}
 function lift(){position=time();silence();down=false;state.grabbed=false;state.dragging=false;renderStatus();}
-async function ensureAudio(resume=true){if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();gain=ctx.createGain();gain.gain.value=Number($('volume').value);gain.connect(ctx.destination);}if(resume)await ctx.resume();}
+async function ensureAudio(resume=true){if(!ctx){
+ ctx=new (window.AudioContext||window.webkitAudioContext)();gain=ctx.createGain();gain.gain.value=Number($('volume').value);
+ panner=ctx.createPanner();panner.panningModel='HRTF';panner.distanceModel='inverse';panner.rolloffFactor=.5;
+ panner.coneInnerAngle=360;panner.coneOuterAngle=360;
+ gain.connect(panner);panner.connect(ctx.destination);
+ }if(resume)await ctx.resume();}
+// Scene vectors are Z-up millimetres; Web Audio is Y-up metres. No tone/EQ stage.
+function setListener(position,forward,up,mouth,refDistance){
+ if(!ctx)return;
+ const scale=.001,listener=ctx.listener;
+ const setPosition=(node,v)=>{const x=v.x*scale,y=v.z*scale,z=-v.y*scale;
+  if(node.positionX){node.positionX.value=x;node.positionY.value=y;node.positionZ.value=z;}else node.setPosition(x,y,z);};
+ setPosition(listener,position);setPosition(panner,mouth);panner.refDistance=refDistance*scale;
+ if(listener.forwardX){
+  listener.forwardX.value=forward.x;listener.forwardY.value=forward.z;listener.forwardZ.value=-forward.y;
+  listener.upX.value=up.x;listener.upY.value=up.z;listener.upZ.value=-up.y;
+ }else listener.setOrientation(forward.x,forward.z,-forward.y,up.x,up.z,-up.y);
+}
 function reversed(){
  if(!reverseBuffer&&buffer){
   reverseBuffer=ctx.createBuffer(buffer.numberOfChannels,buffer.length,buffer.sampleRate);
@@ -252,7 +269,7 @@ $('seek').oninput=e=>{if(!record)return;position=duration()*Number(e.target.valu
 $('seek').onchange=()=>{if(down&&!state.grabbed)drop(position).catch(e=>status(e.message,'error'));else renderStatus();};
 function setVolume(v){v=Math.max(0,Math.min(1,Number(v)||0));v=Math.round(v*100)/100;$('volume').value=String(v);if(gain)gain.gain.value=v;$('volumeValue').textContent=Math.round(v*100);}
 $('volume').oninput=e=>setVolume(e.target.value);
-window.vinyl={get record(){return record;},get state(){return state;},get down(){return down;},get buffer(){return buffer;},time,lift,drop,grabStart,grabMove,grabEnd,grabTick,
+window.vinyl={get record(){return record;},get state(){return state;},get down(){return down;},get buffer(){return buffer;},time,lift,drop,grabStart,grabMove,grabEnd,grabTick,setListener,
  place(x,y,release=false){if(!record)return;if(release){grabEnd();return;}grabStart(x,y);},
  // cabinet-as-UI setters (the 3D dials call these; the HTML controls share the same paths)
  get volume(){return Number($('volume').value);},setVolume,

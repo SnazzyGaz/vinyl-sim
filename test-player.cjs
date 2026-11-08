@@ -8,13 +8,16 @@ const radio=(name,value,checked=false)=>({name,value,checked,disabled:false,onch
 const groups={source:[radio('source','vector'),radio('source','png')],rpmPreset:[radio('rpmPreset','33.333333'),radio('rpmPreset','45',true),radio('rpmPreset','78')]};
 global.document={body:{dataset:{}},getElementById:element,querySelectorAll(sel){const m=/name=(\w+)/.exec(sel);return m?groups[m[1]]:[];},createElement(){return{};}};
 global.window=global;global.setInterval=()=>{};const events=[];global.dispatchEvent=e=>{events.push(e);};global.CustomEvent=class{constructor(name,obj){this.type=name;this.detail=obj.detail;}};
+const params=names=>Object.fromEntries(names.split(' ').map(k=>[k,{value:0}]));
+const node=extra=>({...extra,connect(to){this.connected=to;}});
 let context;const sources=[];class AudioContext{
- constructor(){this.currentTime=0;context=this;this.destination={};}
- createGain(){return {gain:{value:1},connect(){}};}
+ constructor(){this.currentTime=0;context=this;this.destination={};this.listener=params('positionX positionY positionZ forwardX forwardY forwardZ upX upY upZ');}
+ createGain(){return this.gain=node({gain:{value:1}});}
+ createPanner(){return this.panner=node(params('positionX positionY positionZ'));}
  async resume(){}
  async decodeAudioData(){return {sampleRate:16000,length:160000,duration:10,numberOfChannels:1,getChannelData(){return new Float32Array(160000);}};}
  createBuffer(){return {getChannelData(){return new Float32Array(160000);},duration:10};}
- createBufferSource(){const s={playbackRate:{value:1},connect(){},start(when,position){this.offset=position;},stop(){}};sources.push(s);return s;}
+ createBufferSource(){const s={playbackRate:{value:1},connect(to){this.connected=to;},start(when,position){this.offset=position;},stop(){}};sources.push(s);return s;}
 }global.AudioContext=AudioContext;
 const record={id:'0'.repeat(32),base:'/output/'+'0'.repeat(32)+'/',has_vector:true,playback_source:'vector',metadata:{duration_sec:10,rpm_cut:45,sample_rate:16000,bandlimit_hz:1415,r_start_mm:86,pitch_mm:5,label_radius_mm:27,disc_radius_mm:90,amp_mm:.3,lead_in_turns:.35}};
 const record2={...record,id:'1'.repeat(32),base:'/output/'+'1'.repeat(32)+'/',has_vector:false,playback_source:'png',metadata:{...record.metadata,rpm_cut:78,disc_radius_mm:100}};
@@ -24,6 +27,7 @@ global.fetch=async(url,opt)=>{requests.push(url);if(String(url).includes('api/pr
 require('./static/player.js');
 const tick=()=>new Promise(r=>setTimeout(r,5));
 (async()=>{
+ vinyl.setListener();assert.equal(context,undefined,'spatial updates before audio are a no-op');
  assert.equal(element('needle').disabled,true,'needle disabled before a record');
  // A groove WAV alone is not a record here.
  element('recordFile').onchange({target:{files:[{name:'a.groove.wav'}],value:''}});await tick();
@@ -31,8 +35,21 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  element('recordFile').onchange({target:{files:[{name:'tune.png'},{name:'tune.groove.wav'},{name:'tune.json'}],value:''}});await tick();await tick();
  assert.equal(apiPosts()[0],'/api/import');assert.equal(vinyl.record,record);assert.equal(vinyl.down,false);
  assert.equal(element('needleState').textContent,'Needle lifted — silent');
+ assert.equal(context.gain.connected,context.panner);assert.equal(context.panner.connected,context.destination);
+ assert.equal(context.panner.panningModel,'HRTF');assert.equal(context.panner.distanceModel,'inverse');assert.equal(context.panner.rolloffFactor,.5);
+ assert.equal(context.panner.coneInnerAngle,360);assert.equal(context.panner.coneOuterAngle,360);
+ const pos={x:100,y:-500,z:200},mouth={x:-20,y:30,z:120},forward={x:0,y:1,z:0},up={x:0,y:0,z:1};
+ vinyl.setListener(pos,forward,up,mouth,600);
+ assert.deepEqual(['positionX','positionY','positionZ'].map(k=>context.panner[k].value),[-.02,.12,-.03]);
+ assert.deepEqual(['positionX','positionY','positionZ'].map(k=>context.listener[k].value),[.1,.2,.5]);
+ assert.equal(context.panner.refDistance,.6);
+ assert.deepEqual(['forwardX','forwardY','forwardZ','upX','upY','upZ'].map(k=>context.listener[k].value),[0,0,-1,0,1,-0]);
+ const modern=context.listener,legacy={setPosition(...p){this.position=p;},setOrientation(...p){this.orientation=p;}};context.listener=legacy;
+ vinyl.setListener(pos,forward,up,mouth,600);assert.deepEqual(legacy.position,[.1,.2,.5]);assert.deepEqual(legacy.orientation,[0,0,-1,0,1,-0]);context.listener=modern;
  assert.equal(groups.source[0].checked,true);assert.equal(groups.source[1].disabled,false);
  await element('needle').onclick();await tick();assert.equal(vinyl.down,true);assert.equal(element('needle').textContent,'Lift needle');
+ assert.equal(sources.at(-1).connected,context.gain,'playback feeds shared spatial path');
+ vinyl.grabStart(50,0);vinyl.grabMove(49,5);assert.equal(sources.at(-1).connected,context.gain,'scratch feeds shared spatial path');vinyl.grabEnd();await tick();await vinyl.drop(0);
  context.currentTime=2;assert.equal(vinyl.time(),2);
  groups.rpmPreset[2].checked=true;groups.rpmPreset[2].onchange({target:groups.rpmPreset[2]});await tick();assert.equal(sources.at(-1).playbackRate.value,78/45);
  element('needle').onclick();const lifted=vinyl.time();context.currentTime=9;assert.equal(vinyl.time(),lifted);assert.equal(vinyl.down,false);
