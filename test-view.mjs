@@ -26,7 +26,7 @@ try {
   const THREE={...real,WebGLRenderer:class{constructor(){this.domElement=new Element();}setPixelRatio(){}setSize(){}render(scene,camera){scene.updateMatrixWorld();camera.updateMatrixWorld();}},TextureLoader:class{load(url,onLoad,onProgress,onError){onError?.(new Error('no texture in test'));}}};
   let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
   const win=new Element();win.vinyl=vinyl;
-  const context={THREE,OrbitControls,GLTFLoader:class{load(url,cb){const group=new real.Group();group.add(new real.Mesh(new real.CircleGeometry(90,32),new real.MeshStandardMaterial({color:0xffffff})));cb({scene:group});}},document:{getElementById:id=>({view,resetView:reset,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
+  const context={THREE,OrbitControls,document:{getElementById:id=>({view,resetView:reset,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
   vm.createContext(context);
   const source=(await fs.readFile(new URL('./static/view.js',import.meta.url),'utf8')).replace(/^import .*;$/mg,'');
   vm.runInContext(source+'\nglobalThis.api={camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R};',context);
@@ -49,9 +49,6 @@ try {
   assert.ok(Math.abs(label.geometry.parameters.innerRadius-3.6)<1e-6,'spindle hole through the red label');
   assert.equal(label.geometry.parameters.outerRadius,metadata.label_radius_mm);
   const lights=scene.children.filter(o=>o.isLight);assert.ok(lights.every(o=>o.intensity<=1));
-  win.emit('vinyl-mesh',{detail:'/unused/disc.glb'});
-  assertBlack(disc.children[0].children[0].material);
-  assert.ok(disc.getObjectByName('vinyl-label').position.z>=metadata.thickness_mm+.2);
   const event=(x,y,button)=>({pointerId:1,pointerType:'mouse',button,clientX:x,clientY:y,pageX:x,pageY:y,ctrlKey:false,metaKey:false,shiftKey:false});
   const initial=camera.position.clone();canvas.emit('pointerdown',event(400,300,2));canvas.emit('pointermove',event(520,350,2));canvas.emit('pointerup',event(520,350,2));
   for(let i=0;i<80;i++)tick();assert.ok(camera.position.distanceTo(initial)>1);assert.equal(lifts,0);assert.equal(placements.length,0);assert.equal(vinyl.down,true);
@@ -115,5 +112,5 @@ try {
    vinyl.record={metadata:{...metadata,disc_radius_mm:100},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
    assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);
    assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');vinyl.buffer=null;}
-  console.log('PASS: clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, dim lights, black GLB override, piano-black scene, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
+  console.log('PASS: clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, dim lights, piano-black scene, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

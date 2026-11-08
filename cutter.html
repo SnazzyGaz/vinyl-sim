@@ -92,9 +92,6 @@
         <button id="saveSet" class="btn dark-ink" type="button" disabled>Save set to folder…</button>
         <p class="note" id="saveHint">Pick a folder; the ticked files are written there with the record name. Use Save as… for a single file.</p>
         <p id="fault" class="notice" role="alert" hidden></p>
-        <div class="secondary">
-          <button id="build" class="btn small" type="button" disabled>Build 3D mesh · GLB / STL</button>
-        </div>
       </section>
 
     </div></div>
@@ -103,14 +100,14 @@
   <details class="caveats">
     <summary>Notes on the cut</summary>
     <div class="help"><ul>
-      <li>The cut runs on this computer through <code>serve.py</code>. Uploaded audio is deleted once it is cut; nothing goes online.</li>
+      <li>The cut runs on your computer: through <code>serve.py</code> in the local app, or right in the browser on the live page. Your audio is never uploaded anywhere else.</li>
       <li>The groove master WAV is the prepared groove itself (mono, filtered, normalised), not a copy of your upload. Keep it and the JSON beside the PNG under the same name to play from the vector master.</li>
       <li>A PNG on its own still plays, traced from its pixels, but it is deliberately lo-fi rather than MP3 quality. A 4096 map cannot hold a whole LP of full-band grooves.</li>
       <li>The viewing picture is an 8-bit image with the paper label; it is not a record and the Player will refuse it.</li>
-      <li>The 3D mesh is for printing or viewing in millimetres. It is not used for playback, and nothing here guarantees a physical print would play.</li>
     </ul></div>
   </details>
 </div>
+<script src="static/vinyl-client.js"></script>
 <script src="static/cutter.js"></script>
 </body>
 </html>

@@ -94,34 +94,6 @@
   },
   "vector_format": "PCM16 mono WAV of prepared displacement; r = r_nominal + amp_mm * (PCM / 32768), paired JSON metadata and SHA256. Inverse shelf only during vector playback, no second lowpass.",
   "quality_definition": "Legacy-named quality_vs_bandlimited_original and quality_vs_fullband_original are PNG-trace metrics. Mono source -> +6 dB minimum-phase shelf -> radius-following Hann STFT filtering -> peak normalization -> groove sample times -> identical decode-side adaptive cleanup and inverse shelf. This measures raster/centroid loss, not full-band fidelity. Gain-aligned SNR and +/-10 ms lag search exclude edge transients. Full-band comparison is separately reported.",
-  "mesh": {
-    "vertices": 16642,
-    "triangles": 33280,
-    "watertight": true,
-    "volume_mm3": 62761.94209506517,
-    "radial_segments": 64,
-    "angular_segments": 256,
-    "warning": "Preview-resolution relief from PNG depth pixels; vector master (when supplied) remains playback source. Tiny grooves can be lost, especially on long recordings. Not a playable physical record guarantee."
-  },
-  "reopened_meshes": {
-    "glb": {
-      "vertices": 16642,
-      "triangles": 33280,
-      "watertight": true,
-      "valid": true,
-      "z_min": 0.0,
-      "z_max": 2.5
-    },
-    "stl": {
-      "vertices": 16642,
-      "triangles": 33280,
-      "watertight": true,
-      "valid": true,
-      "z_min": 0.0,
-      "z_max": 2.5
-    }
-  },
-  "mesh_note": "New inverted PNG tested with cheap 64x256 mesh; old huge sample-disc GLB/STL not refreshed and not shipped.",
   "checks": {
     "png_only_reimport_exact": true,
     "standard_inverted_audio_exact": true,
@@ -132,7 +104,6 @@
     "mismatched_vector_rejected": true,
     "preview_max_8bit": 26,
     "preview_import_rejected": true,
-    "mesh_flat_center_cap": true,
     "unknown_polarity_rejected": true,
     "stored_surface_16bit": 1285,
     "stored_max_16bit": 12629,
@@ -148,7 +119,6 @@
   "verification_seconds": 16.552388537995284,
   "visual_fix": {
     "preview": "RingGeometry with label-radius hole; explicit black albedo 0x141416, roughness .42, metalness 0; dark texture used only for bump, not albedo.",
-    "mesh": "GLB materials explicitly replaced with same black material; no vertex colour dependence. Flat physical label cap.",
     "label": "Separate brown label at thickness + 0.3 mm with polygonOffset; no coplanar preview overlap.",
     "lights": "Hemisphere .45, key .85"
   },
@@ -159,8 +129,6 @@
     "2x2 subpixel raster averaging reduces grid beating but cannot eliminate all alias/laser artifacts at 4096, especially tight long-track grooves.",
     "Custom presence shelf is not RIAA. Inverse shelf is exact digitally, but raster loss is not reversible.",
     "16-bit PNG stores physical surface heights in inverted visual polarity plus spiral/filter metadata, never hidden PCM/MP3.",
-    "Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload or reduced mesh.",
-    "GLB/STL are visualization reliefs; physical print/stylus playability is not guaranteed.",
     "New exports use v2 because old v1 decoders silently ignored polarity; this decoder reads both v1 and v2.",
     "Pinned three.js/OrbitControls CDN needs internet; local Python processing and audio are local.",
     "8 minutes maximum, 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features."
@@ -259,7 +227,7 @@
     },
     "camera_material_label": {
       "passed": true,
-      "output": "PASS: real OrbitControls right-drag orbit, wheel/distance clamps, reset, left needle unchanged, raycast after moved camera, orbit does not lift playback; preview ring/label separation, dim lights and black GLB override. Mocked renderer/DOM, not WebGL."
+      "output": "PASS: real OrbitControls right-drag orbit, wheel/distance clamps, reset, left needle unchanged, raycast after moved camera, orbit does not lift playback; preview ring/label separation, dim lights. Mocked renderer/DOM, not WebGL."
     },
     "app_syntax": {
       "passed": true,
@@ -272,7 +240,6 @@
   "bundle": {
     "path": "/workspace/vinyl-project/vinyl-project.zip",
     "excludes": [
-      "Huge GLB/STL",
       "old HTTP sessions",
       "long-test artifacts",
       "caches"

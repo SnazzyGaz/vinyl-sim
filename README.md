@@ -2,9 +2,9 @@
 
 Cut audio into a grooved 16-bit PNG record, then play it on a 3D phonograph.
 
-[Open the player demo](https://snazzygaz.github.io/vinyl-sim/player.html)
+[Open the player demo](https://snazzygaz.github.io/vinyl-sim/player.html) · [Cutter](https://snazzygaz.github.io/vinyl-sim/cutter.html)
 
-The live page loads a short sample record: drop the needle, scratch the disc, and orbit the cabinet. Cutting your own audio, or opening a PNG you cut yourself, needs the app running on your computer.
+The GitHub Pages demo cuts and plays records right in your browser, and the player starts with a sample record already on the platter. Run locally, the same pages use the Python server (`serve.py`) instead.
 
 ## Run it locally
 
@@ -35,7 +35,7 @@ Choose an audio file (or the bundled 11-second tune) and press Cut. You get:
 
 Open the 16-bit PNG, and add its `.groove.wav` and `.json` when you have them. Lift and drop the tonearm to stop and start, click a groove to drop the needle there, or hold the disc and drag to scratch. Loaded records wait in sleeves; drag one onto the platter to swap.
 
-A PNG on its own is traced from its pixels and sounds deliberately lo-fi. This is a digital stylus, not a promise that a printed disc would play.
+A PNG on its own is traced from its pixels and sounds deliberately lo-fi. This is a digital stylus.
 
 ## Credit
 

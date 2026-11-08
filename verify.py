@@ -1,17 +1,15 @@
-"""Reproducible vector/PNG/mesh verification. Writes report.json in this project only."""
+"""Reproducible vector/PNG verification. Writes report.json in this project only."""
 import json, math, time, tempfile, shutil
 from pathlib import Path
 import numpy as np
 from scipy.signal import butter,sosfiltfilt,correlate,correlation_lags
 from scipy.io import wavfile
-import trimesh
 from encode import encode,load_audio,prepare_audio,parameters,rasterize
 from audio_filters import postprocess,presence,radius_cutoff
 from PIL import Image,PngImagePlugin
 from serve import finish
 from decode import decode,read_map,decode_record
 from vector import companion,read_vector,decode_vector
-from mesh import build
 ROOT=Path(__file__).resolve().parent
 
 def quality(reference,estimate,fs):
@@ -76,16 +74,6 @@ def run(long=False):
         except ValueError: checks['preview_import_rejected']=True
         else: raise AssertionError('Preview was importable')
         shutil.copyfile(temp/'preview.png',out/'sample-preview.png');shutil.copyfile(temp/'playback.wav',out/'sample-playback.wav')
-        meshinfo=build(copy,temp/'check-disc',radial=64,angular=256)
-        assert meshinfo['watertight']
-        opened={}
-        for ext in ('glb','stl'):
-            mesh=trimesh.load(temp/f'check-disc.{ext}',force='mesh')
-            opened[ext]=dict(vertices=len(mesh.vertices),triangles=len(mesh.faces),watertight=bool(mesh.is_watertight),valid=bool(len(mesh.faces)>0 and np.isfinite(mesh.vertices).all()),z_min=float(mesh.vertices[:,2].min()),z_max=float(mesh.vertices[:,2].max()))
-            assert opened[ext]['valid'] and opened[ext]['watertight']
-            center_mask=(np.hypot(mesh.vertices[:,0],mesh.vertices[:,1])<m['label_radius_mm']*.95)&(mesh.vertices[:,2]>1)
-            assert np.allclose(mesh.vertices[center_mask,2],m['thickness_mm'],atol=1e-6)
-        checks['mesh_flat_center_cap']=True
         # Unknown polarity must fail, never silently play upside-down grooves.
         bad=dict(m,height_polarity='unsupported');info=PngImagePlugin.PngInfo();info.add_itxt('vinyl',json.dumps(bad))
         with Image.open(copy) as im: im.save(temp/'bad.png',pnginfo=info)
@@ -122,15 +110,14 @@ def run(long=False):
         reference_definitions=dict(vector='Prepared mono -> inverse presence shelf only; PCM16 quantization error, no second lowpass.',png_same_vector='PNG-traced output compared with that same de-emphasized prepared reference; includes raster and cleanup changes.',png_raster_only='Prepared reference also receives PNG-side adaptive cleanup and inverse shelf; isolates raster loss.',fullband='Original mono, no cut preparation; gain-fitted comparison. Instrumental test only, not vocals.'),
         vector_format='PCM16 mono WAV of prepared displacement; r = r_nominal + amp_mm * (PCM / 32768), paired JSON metadata and SHA256. Inverse shelf only during vector playback, no second lowpass.',
         quality_definition='Legacy-named quality_vs_bandlimited_original and quality_vs_fullband_original are PNG-trace metrics. Mono source -> +6 dB minimum-phase shelf -> radius-following Hann STFT filtering -> peak normalization -> groove sample times -> identical decode-side adaptive cleanup and inverse shelf. This measures raster/centroid loss, not full-band fidelity. Gain-aligned SNR and +/-10 ms lag search exclude edge transients. Full-band comparison is separately reported.',
-        mesh=meshinfo,reopened_meshes=opened,mesh_note='New inverted PNG tested with cheap 64x256 mesh; old huge sample-disc GLB/STL not refreshed and not shipped.',checks=checks,verification_seconds=time.monotonic()-start,
-        visual_fix=dict(preview='RingGeometry with label-radius hole; explicit black albedo 0x141416, roughness .42, metalness 0; dark texture used only for bump, not albedo.',mesh='GLB materials explicitly replaced with same black material; no vertex colour dependence. Flat physical label cap.',label='Separate brown label at thickness + 0.3 mm with polygonOffset; no coplanar preview overlap.',lights='Hemisphere .45, key .85'),
+        checks=checks,verification_seconds=time.monotonic()-start,
+        visual_fix=dict(preview='RingGeometry with label-radius hole; explicit black albedo 0x141416, roughness .42, metalness 0; dark texture used only for bump, not albedo.',label='Separate brown label at thickness + 0.3 mm with polygonOffset; no coplanar preview overlap.',lights='Hemisphere .45, key .85'),
         browser_tested=False,browser_note='Node mocked renderer/DOM tests exercise real pinned OrbitControls and Three.js camera math, including moved-camera raycast. JS syntax checked. No real browser, WebGL or listening audition; manual visual check remains.',
         caveats=['Vector avoids raster/grid loss but retains the existing adaptive preparation (~3.2–4 kHz on this sample). It cannot recover frequencies already filtered out. Still lo-fi mono.',
             '2x2 subpixel raster averaging reduces grid beating but cannot eliminate all alias/laser artifacts at 4096, especially tight long-track grooves.',
             'Custom presence shelf is not RIAA. Inverse shelf is exact digitally, but raster loss is not reversible.',
             '16-bit PNG stores physical surface heights in inverted visual polarity plus spiral/filter metadata, never hidden PCM/MP3.',
-            'Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload or reduced mesh.',
-            'GLB/STL are visualization reliefs; physical print/stylus playability is not guaranteed.',
+            'Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload.',
             'New exports use v2 because old v1 decoders silently ignored polarity; this decoder reads both v1 and v2.',
             'Pinned three.js/OrbitControls CDN needs internet; local Python processing and audio are local.',
             '8 minutes maximum, 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features.'],
@@ -143,7 +130,7 @@ def run(long=False):
         lx,lfs=load_audio(out/'long-test.wav');lr=postprocess(np.interp(np.arange(len(ly))/lm['sample_rate'],np.arange(len(lx))/lfs,prepare_audio(lx,lfs,lm)),lm['sample_rate'],lm)
         rep['three_minute_stress_test']=dict(metadata=lm,quality=quality(lr,ly,int(lm['sample_rate'])),seconds=time.monotonic()-tick,source='Original instrumental demo slowed 3x then tiled to 180 seconds; not a vocal benchmark.')
     (ROOT/'report.json').write_text(json.dumps(rep,indent=2))
-    print(json.dumps({k:v for k,v in rep.items() if k in ('quality_vs_bandlimited_original','quality_vs_fullband_original','vector_vs_prepared_deemphasized_reference','png_vs_same_vector_reference','vector_vs_fullband_original','checks','reopened_meshes','three_minute_stress_test')},indent=2))
+    print(json.dumps({k:v for k,v in rep.items() if k in ('quality_vs_bandlimited_original','quality_vs_fullband_original','vector_vs_prepared_deemphasized_reference','png_vs_same_vector_reference','vector_vs_fullband_original','checks','three_minute_stress_test')},indent=2))
 if __name__=='__main__':
     import argparse
     p=argparse.ArgumentParser();p.add_argument('--long',action='store_true');a=p.parse_args();run(a.long)

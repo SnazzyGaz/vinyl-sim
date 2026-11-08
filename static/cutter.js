@@ -1,11 +1,18 @@
-/* Cutter room. Sends audio to the existing Python encode path, then fetches the
-   cut files as blobs so the user chooses where they are saved. No playback here. */
+/* Cutter room. With the local app (serve.py) it sends audio to the Python encode
+   path and fetches the cut files as blobs. On static hosting (GitHub Pages) there
+   is no API, so the same cut runs in the browser (vinyl-client.js → Web Worker).
+   Either way the user chooses where the files are saved. No playback here. */
 (() => {
 const $=id=>document.getElementById(id);
-let cut=null;          // server record {id, base, metadata, has_vector}
+let cut=null;          // cut record {metadata, has_vector} (+ id/base from serve.py)
 let files=[];          // [{key, name, label, note, blob, checked}]
 let busy=false;
 const FS_DIR='showDirectoryPicker' in window, FS_FILE='showSaveFilePicker' in window;
+/* serve.py answers api/progress; GitHub Pages and other static hosts do not. Relative
+   URL so it resolves to /api/progress locally and under /vinyl-sim/ on Pages. */
+let apiProbe=null;
+function localApi(){return apiProbe??=fetch('api/progress?job='+'0'.repeat(32),{cache:'no-store'})
+ .then(async r=>{if(!r.ok)return false;const d=await r.json();return !!d&&typeof d==='object'&&'stage' in d;}).catch(()=>false);}
 
 /* ---------- states ---------- */
 function setState(s){document.body.dataset.state=s;$('lamp').dataset.state={idle:'off',cutting:'busy',done:'on',error:'error'}[s]||'off';}
@@ -41,12 +48,13 @@ function traverse(f,label){
  bar.setAttribute('aria-valuenow',Math.round(f*100));bar.setAttribute('aria-valuetext',label);
  $('traverseText').textContent=label;
 }
-function startTraverse(id,word){
+function startTraverse(id,word,poll=true){
  started=performance.now();traverse(0,word);
  $('traverseWrap').hidden=true;
  revealTimer=setTimeout(()=>{$('traverseWrap').hidden=false;},2000);
  pollTimer=setInterval(async()=>{
   const secs=((performance.now()-started)/1000).toFixed(0);$('elapsed').textContent=secs+' s';
+  if(!poll)return; // in-browser cuts report their stages straight from the worker
   try{const r=await fetch('/api/progress?job='+id);const p=await r.json();
    if(p.stage in STAGE_AT&&p.stage!=='received')traverse(STAGE_AT[p.stage],STAGE_TEXT[p.stage]);}catch{}
  },500);
@@ -70,44 +78,55 @@ $('cut').onclick=async()=>{
  const mode=sourceMode(),f=$('audioFile').files[0];
  if(mode==='file'&&!f){fault('Choose an audio file first, or pick the original 11-second tune.');return;}
  const id=job();lock(true);setState('cutting');cut=null;files=[];renderFiles();showProof(null);
- say(mode==='sample'?'Cutting the original tune…':'Sending audio to the lathe…');
- startTraverse(id,mode==='sample'?STAGE_TEXT.cutting:'Sending audio');
  try{
+  const local=await localApi();
+  say(mode==='sample'?'Cutting the original tune…':(local?'Sending audio to the lathe…':'Cutting in your browser…'));
+  startTraverse(id,mode==='sample'||!local?STAGE_TEXT.cutting:'Sending audio',local);
   let data;
-  if(mode==='sample'){traverse(STAGE_AT.cutting,STAGE_TEXT.cutting);data=await post('/api/sample',null,id);}
-  else{const form=new FormData();form.append('file',f);form.append('size',document.querySelector('input[name=size]:checked').value);
-   data=await post('/api/encode',form,id,p=>{traverse(p*.14,p<1?`Sending audio ${Math.round(p*100)}%`:STAGE_TEXT.cutting);if(p>=1)say('Cutting the groove…');});}
-  traverse(.96,'Collecting the cut');say('Collecting the cut files…');
-  cut=data;await collect(data);
+  if(!local)data=await cutInBrowser(mode,f);
+  else{
+   if(mode==='sample'){traverse(STAGE_AT.cutting,STAGE_TEXT.cutting);data=await post('/api/sample',null,id);}
+   else{const form=new FormData();form.append('file',f);form.append('size',document.querySelector('input[name=size]:checked').value);
+    data=await post('/api/encode',form,id,p=>{traverse(p*.14,p<1?`Sending audio ${Math.round(p*100)}%`:STAGE_TEXT.cutting);if(p>=1)say('Cutting the groove…');});}
+   traverse(.96,'Collecting the cut');say('Collecting the cut files…');
+   await collect(data);
+  }
+  cut=data;
   traverse(1,STAGE_TEXT.done);setState('done');
   const m=data.metadata;
   say(`Cut complete. ${m.image_size} map · ${Math.round(m.disc_radius_mm*2)} mm at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${m.duration_sec.toFixed(1)} s. Choose where to save it.`);
-  showProof(data.base+'preview.png');
+  showProof(data.previewUrl||data.base+'preview.png');
  }catch(e){console.error(e);fault(e.message);}
  finally{stopTraverse();lock(false);}
 };
 async function blob(url){const r=await fetch(url);if(!r.ok)throw Error('Missing cut file: '+url.split('/').pop());return r.blob();}
+const DELIVERY=[['png','heightmap.png','.png','16-bit height-map PNG','The record. Opens in the Player.',true],
+ ['wav','heightmap.groove.wav','.groove.wav','Groove master WAV','Vector master; keep with the PNG.',true],
+ ['json','heightmap.json','.json','Spiral metadata JSON','Pairs the groove WAV with the PNG.',true],
+ ['preview','preview.png','.preview.png','Viewing picture','8-bit, not a playable record.',false]];
 async function collect(d){
- const list=[['png','heightmap.png','.png','16-bit height-map PNG','The record. Opens in the Player.',true]];
- if(d.has_vector)list.push(['wav','heightmap.groove.wav','.groove.wav','Groove master WAV','Vector master; keep with the PNG.',true]);
- list.push(['json','heightmap.json','.json','Spiral metadata JSON','Pairs the groove WAV with the PNG.',true]);
- list.push(['preview','preview.png','.preview.png','Viewing picture','8-bit, not a playable record.',false]);
+ const list=DELIVERY.filter(e=>e[0]!=='wav'||d.has_vector);
  files=[];
  for(const [key,src,ext,label,note,checked] of list)files.push({key,ext,label,note,checked,blob:await blob(d.base+src),mime:src.endsWith('.png')?'image/png':src.endsWith('.json')?'application/json':'audio/wav'});
  renderFiles();
 }
+/* ---------- in-browser cut (static hosting: no serve.py) ---------- */
+async function cutInBrowser(mode,f){
+ let bytes,size=document.querySelector('input[name=size]:checked').value;
+ if(mode==='sample'){const r=await fetch('samples/original.wav');if(!r.ok)throw Error('Could not fetch the original tune.');bytes=await r.arrayBuffer();size='4096';}
+ else bytes=await f.arrayBuffer();
+ const span={cutting:[STAGE_AT.cutting,STAGE_AT.tracing],tracing:[STAGE_AT.tracing,STAGE_AT.proofing],proofing:[STAGE_AT.proofing,.96]};
+ const r=await window.VinylBrowser.cut(bytes,Number(size),(stage,fr)=>{const [a,b]=span[stage]||[0,0];traverse(a+(b-a)*fr,STAGE_TEXT[stage]||stage);});
+ traverse(.96,'Collecting the cut');
+ const make=(key,data,mime)=>({key,blob:new Blob([data],{type:mime})});
+ const set=[make('png',r.png,'image/png'),make('wav',r.groove,'audio/wav'),make('json',r.json,'application/json'),make('preview',r.preview,'image/png')];
+ files=DELIVERY.filter(d=>d[0]!=='wav'||r.has_vector).map(([key,,ext,label,note,checked])=>{const s=set.find(x=>x.key===key);return {key,ext,label,note,checked,blob:s.blob,mime:s.blob.type};});
+ renderFiles();
+ return {metadata:r.metadata,has_vector:r.has_vector,previewUrl:objectUrl(set[3].blob)};
+}
+let proofUrl=null;
+function objectUrl(b){if(proofUrl)URL.revokeObjectURL(proofUrl);return proofUrl=URL.createObjectURL(b);}
 function showProof(url){const img=$('proof');if(url){img.src=url;img.hidden=false;}else{img.removeAttribute('src');img.hidden=true;}}
-
-/* ---------- mesh (secondary export) ---------- */
-$('build').onclick=async()=>{
- if(busy||!cut)return;clearFault();const id=job();lock(true);setState('cutting');say('Building the 3D relief mesh…');startTraverse(id,'Building mesh');
- try{traverse(.3,'Building mesh');const m=await post('/api/build',JSON.stringify({id:cut.id}),id);
-  for(const [key,src,ext,label,note] of [['glb','disc.glb','.glb','3D mesh GLB','Millimetre units; not used for playback.'],['stl','disc.stl','.stl','3D mesh STL','Millimetre units; not used for playback.']])
-   if(!files.some(f=>f.key===key))files.push({key,ext,label,note,checked:true,blob:await blob(cut.base+src),mime:key==='glb'?'model/gltf-binary':'model/stl'});
-  traverse(1,'Mesh built');setState('done');renderFiles();
-  say(`Mesh built: ${m.triangles.toLocaleString('en-GB')} triangles, watertight: ${m.watertight?'yes':'no'}. ${m.warning||''}`);
- }catch(e){console.error(e);fault(e.message);}finally{stopTraverse();lock(false);}
-};
 
 /* ---------- delivery ---------- */
 function size(n){return n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';}
@@ -127,7 +146,7 @@ function renderFiles(){
   ul.append(li);
  }
  const any=files.some(f=>f.checked);
- $('saveSet').disabled=busy||!any;$('build').disabled=busy||!cut||files.some(f=>f.key==='glb');
+ $('saveSet').disabled=busy||!any;
  $('recordName').disabled=busy||!files.length;
 }
 function download(f){const a=document.createElement('a');a.href=URL.createObjectURL(f.blob);a.download=fileName(f);document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);}

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 const view=document.getElementById('view');
 const scene=new THREE.Scene();scene.background=new THREE.Color('#141310'); // piano-black well
@@ -375,7 +374,7 @@ buildPhonograph(R);
 addPlaceholder();resetView();
 window.addEventListener('vinyl-record',e=>{const record=e.detail;version++;const v=version;clearDisc();const oldR=R;R=record.metadata.disc_radius_mm;buildPhonograph(R);if(oldR!==R)buildSleeves();
  resetView();tonearm.visible=true;armHold=null;
- loadBump(record.base+'preview.png',texture=>{
+ loadBump(record.previewUrl||record.base+'preview.png',texture=>{
   if(v!==version)return;
   const geo=new THREE.RingGeometry(record.metadata.label_radius_mm,R,256);
   disc.add(new THREE.Mesh(geo,vinylMaterial(texture)));
@@ -383,7 +382,6 @@ window.addEventListener('vinyl-record',e=>{const record=e.detail;version++;const
   addLabel(record.metadata);
  });
 });
-window.addEventListener('vinyl-mesh',e=>{const v=version;new GLTFLoader().load(e.detail,g=>{if(v!==version)return;clearDisc();g.scene.traverse(o=>{if(o.isMesh){for(const mat of (Array.isArray(o.material)?o.material:[o.material]))mat?.dispose();o.material=vinylMaterial(bumpTex);}});disc.add(g.scene);addLabel(window.vinyl.record.metadata);},undefined,err=>{document.getElementById('status').textContent='Mesh exported but view load failed: '+err;});});
 function setRay(event){const b=renderer.domElement.getBoundingClientRect();pointer.set((event.clientX-b.left)/b.width*2-1,-(event.clientY-b.top)/b.height*2+1);ray.setFromCamera(pointer,camera);}
 function hitPlane(event,z){setRay(event);const p=new THREE.Vector3();return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-z),p)?p:null;}
 function hit(event){return hitPlane(event,window.vinyl.record?.metadata.thickness_mm||2.5);}

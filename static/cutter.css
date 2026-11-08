@@ -65,8 +65,6 @@ body[data-state="cutting"] .traverse .carriage{animation:lamp 900ms steps(2,jump
 .btn.dark-ink{width:100%;min-height:48px;background:var(--black);color:var(--ivory);box-shadow:inset 0 0 0 3px var(--black),inset 0 0 0 4px var(--brass)}
 .btn.dark-ink:hover:not(:disabled){background:var(--soft-black)}
 .btn.dark-ink:disabled{background:var(--ivory-recess);color:var(--ink-muted);box-shadow:inset 0 0 0 3px var(--ivory-recess),inset 0 0 0 4px #b9b09c}
-.secondary{margin-top:auto;padding-top:16px;border-top:1px solid rgba(20,19,16,.35)}
-.secondary .btn{width:100%}
 code{font:400 14px/1 ui-monospace,Consolas,monospace}
 .blotter .btn.brass:disabled{color:#4a4034;background:#cfc6b3;box-shadow:inset 0 0 0 4px #b9b09c}
 @media (max-width:600px),(pointer:coarse){.files input,.option input{width:22px;height:22px}.files li{padding:14px 0}.option{min-height:44px}}

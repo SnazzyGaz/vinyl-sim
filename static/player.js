@@ -1,5 +1,6 @@
 /* Player room. Opens 16-bit PNG records (optionally with their groove WAV + JSON)
-   and plays them. No cutting here. The needle / scratch / seek / speed mechanics
+   and plays them. No cutting here. Imports go to serve.py's /api/import when the
+   local app is running, or run in the browser (vinyl-client.js) on static hosting. The needle / scratch / seek / speed mechanics
    below are carried over unchanged from the original lab app.js; only the
    bindings to the new cabinet controls and the status wording differ. */
 (() => {
@@ -125,8 +126,21 @@ function grabEnd(){
 }
 
 /* ---------- opening a record ---------- */
+/* serve.py answers api/progress; GitHub Pages and other static hosts do not. Relative
+   URL so it resolves to /api/progress locally and under /vinyl-sim/ on Pages.
+   With the API: Python /api/import as always. Without: import in the browser. */
+let apiProbe=null;
+function localApi(){return apiProbe??=fetch('api/progress?job='+'0'.repeat(32),{cache:'no-store'})
+ .then(async r=>{if(!r.ok)return false;const d=await r.json();return !!d&&typeof d==='object'&&'stage' in d;}).catch(()=>false);}
+let browserImports=0;
+async function importInBrowser(parts){
+ let r;try{r=await window.VinylBrowser.open(parts,stage=>status(stage==='proofing'?'Pulling a proof…':'Tracing the groove…','busy'));}
+ catch(e){throw Error(/height map|metadata|polarity/i.test(e.message)?'That PNG is not a record from the Cutter. '+e.message:e.message);}
+ return {id:'browser-'+(++browserImports),metadata:r.metadata,playback_source:r.playback_source,has_vector:r.has_vector,has_png:true,audio_origin:r.audio_origin,
+  base:'',previewUrl:URL.createObjectURL(new Blob([r.preview],{type:'image/png'})),playback:r.playback};
+}
 async function request(url,body){
- const offline='Opening your own records needs the local app (python3 serve.py). This page can still play the bundled demo.';
+ const offline='The local server did not answer. Is serve.py still running?';
  let res;try{res=await fetch(url,{method:'POST',body});}catch{throw Error(offline);}
  let data={};try{data=await res.json();}catch{throw Error(offline);}
  if(!res.ok)throw Error(/height map|metadata|polarity/i.test(data.error||'')?'That PNG is not a record from the Cutter. '+data.error:(data.error||offline));
@@ -145,9 +159,10 @@ async function task(fn){if(busy)return;busy=true;$('open').disabled=true;$('need
 function presetFor(v){for(const r of document.querySelectorAll('input[name=rpmPreset]'))r.checked=Math.abs(Number(r.value)-v)<.05;}
 /* ---------- record library: every opened record keeps its decoded buffers ---------- */
 const library=new Map();let currentId=null,useCounter=0;
+function preview(data){return data.previewUrl||data.base+'preview.png';}
 function sleeveList(){
  return [...library.values()].filter(e=>e.id!==currentId).sort((a,b)=>b.used-a.used)
-  .map(e=>({id:e.id,label:e.label,cover:e.data.base+'preview.png',facts:factsFor(e.data.metadata)}));
+  .map(e=>({id:e.id,label:e.label,cover:preview(e.data),facts:factsFor(e.data.metadata)}));
 }
 function emitSleeves(){window.dispatchEvent(new CustomEvent('vinyl-sleeves',{detail:{current:currentId,count:library.size,sleeves:sleeveList()}}));}
 function factsFor(m){return `${Math.round(m.disc_radius_mm*2)} mm · cut at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${clock(m.duration_sec)}`;}
@@ -172,13 +187,20 @@ async function load(data,label){
  status('Tracing the groove…','busy');await ensureAudio(false);
  // decode into locals first: if this fails, the record already on the platter stays put
  let png=null,vec=null;
- const fallback=await fetch(data.base+'playback.wav');if(!fallback.ok)throw Error('Decoded audio missing.');
- const fallbackBuf=await ctx.decodeAudioData(await fallback.arrayBuffer());
- const pngRes=await fetch(data.base+'playback-png.wav');
- if(pngRes.ok)png=await ctx.decodeAudioData(await pngRes.arrayBuffer());
- if(data.has_vector){const vecRes=await fetch(data.base+'playback-vector.wav');if(vecRes.ok)vec=await ctx.decodeAudioData(await vecRes.arrayBuffer());}
- if(!png)png=data.has_vector?null:fallbackBuf;
- if(!vec&&data.has_vector)vec=fallbackBuf;
+ if(data.playback){
+  // in-browser import: samples already traced/decoded at 16 kHz in the worker
+  const make=f=>{const b=ctx.createBuffer(1,f.length,16000);b.getChannelData(0).set(f);return b;};
+  png=make(data.playback.png);if(data.has_vector&&data.playback.vector)vec=make(data.playback.vector);
+  delete data.playback;
+ }else{
+  const fallback=await fetch(data.base+'playback.wav');if(!fallback.ok)throw Error('Decoded audio missing.');
+  const fallbackBuf=await ctx.decodeAudioData(await fallback.arrayBuffer());
+  const pngRes=await fetch(data.base+'playback-png.wav');
+  if(pngRes.ok)png=await ctx.decodeAudioData(await pngRes.arrayBuffer());
+  if(data.has_vector){const vecRes=await fetch(data.base+'playback-vector.wav');if(vecRes.ok)vec=await ctx.decodeAudioData(await vecRes.arrayBuffer());}
+  if(!png)png=data.has_vector?null:fallbackBuf;
+  if(!vec&&data.has_vector)vec=fallbackBuf;
+ }
  const id=data.id||data.base;
  const entry={id,label:label||'Record',data,pngBuffer:png,vectorBuffer:vec,used:0};
  library.delete(id);library.set(id,entry);
@@ -208,8 +230,10 @@ function classify(files){
 function openFiles(list){return task(async()=>{
  const {png,vector,json}=classify([...list]);
  lift();status(vector?'Opening the record and its groove master…':'Opening the record…','busy');
+ const label=png.name.replace(/\.png$/i,'');
+ if(!(await localApi())){await load(await importInBrowser({png,vector,json}),label);return;}
  const data=new FormData();data.append('file',png);if(vector)data.append('vector',vector);if(json)data.append('metadata',json);
- await load(await request('/api/import',data),png.name.replace(/\.png$/i,''));
+ await load(await request('/api/import',data),label);
 });}
 $('open').onclick=()=>$('recordFile').click();
 $('recordFile').onchange=e=>{if(e.target.files.length)openFiles(e.target.files);e.target.value='';};

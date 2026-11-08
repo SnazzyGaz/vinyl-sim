@@ -19,7 +19,8 @@ let context;const sources=[];class AudioContext{
 const record={id:'0'.repeat(32),base:'/output/'+'0'.repeat(32)+'/',has_vector:true,playback_source:'vector',metadata:{duration_sec:10,rpm_cut:45,sample_rate:16000,bandlimit_hz:1415,r_start_mm:86,pitch_mm:5,label_radius_mm:27,disc_radius_mm:90,amp_mm:.3,lead_in_turns:.35}};
 const record2={...record,id:'1'.repeat(32),base:'/output/'+'1'.repeat(32)+'/',has_vector:false,playback_source:'png',metadata:{...record.metadata,rpm_cut:78,disc_radius_mm:100}};
 let nextImport=record;const requests=[];const apiPosts=()=>requests.filter(u=>u==='/api/import');
-global.fetch=async(url,opt)=>{requests.push(url);if(String(url).includes('demo/record.json'))return{ok:false,status:404,json:async()=>({}),arrayBuffer:async()=>new ArrayBuffer(0)};return{ok:true,json:async()=>nextImport,arrayBuffer:async()=>new ArrayBuffer(0)};};
+// serve.py answers the api/progress probe, so the Python /api/import path is the one under test.
+global.fetch=async(url,opt)=>{requests.push(url);if(String(url).includes('api/progress'))return{ok:true,json:async()=>({stage:'unknown',index:-1,total:4})};if(String(url).includes('demo/record.json'))return{ok:false,status:404,json:async()=>({}),arrayBuffer:async()=>new ArrayBuffer(0)};return{ok:true,json:async()=>nextImport,arrayBuffer:async()=>new ArrayBuffer(0)};};
 require('./static/player.js');
 const tick=()=>new Promise(r=>setTimeout(r,5));
 (async()=>{

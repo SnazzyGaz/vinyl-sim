@@ -11,7 +11,6 @@ from PIL import Image
 from encode import encode, rasterize
 from decode import decode, decode_record, read_map
 from vector import read_vector, companion, decode_vector
-from mesh import build
 
 ROOT=Path(__file__).resolve().parent
 OUTPUT=ROOT/'output'; OUTPUT.mkdir(exist_ok=True)
@@ -127,16 +126,6 @@ class Handler(BaseHTTPRequestHandler):
             job=self.headers.get('X-Job','')
             if not valid_id(job):job=None
             set_stage(job,'received')
-            if route=='/api/build':
-                obj=json.loads(data);ident=str(obj.get('id',''))
-                if not valid_id(ident):raise ValueError('Invalid record id.')
-                folder=OUTPUT/ident
-                if not (folder/'heightmap.png').is_file():raise ValueError('Record not found.')
-                if (folder/'mesh.json').exists():result=json.loads((folder/'mesh.json').read_text())
-                else:
-                    set_stage(job,'cutting')
-                    result=build(folder/'heightmap.png',folder/'disc');(folder/'mesh.json').write_text(json.dumps(result,indent=2))
-                set_stage(job,'done');self.reply(result);return
             if route not in ('/api/encode','/api/import','/api/sample'):self.reply({'error':'Unknown endpoint'},404);return
             folder=OUTPUT/uuid.uuid4().hex;folder.mkdir()
             set_stage(job,'cutting')
