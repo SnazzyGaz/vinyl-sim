@@ -49,3 +49,12 @@ body[data-record="open"] .invite{opacity:0;visibility:hidden}
 .caveats .meta summary{cursor:pointer;color:var(--ink-muted)}
 .caveats pre{max-height:320px;overflow:auto;padding:16px;background:var(--ivory-recess);border:1px solid var(--black);font:400 12px/1.45 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap}
 @media (max-width:600px),(pointer:coarse){.tech .plates.small span{padding:16px 12px}}
+/* Picture quality selector */
+.quality-row{display:flex;align-items:center;gap:12px;color:var(--ink-muted)}
+.quality-row span{flex:none}
+.quality{flex:1;min-width:0;padding:8px 10px;background:var(--ivory);color:var(--ink);border:1px solid var(--black);border-radius:1px;font:500 12px/1.2 var(--display);letter-spacing:var(--track-label);text-transform:uppercase}
+.quality:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.quality-row output{min-width:5.5em;text-align:right;font-size:12px;color:var(--ink-muted);text-transform:lowercase;letter-spacing:.04em}
+/* the canvas fades in once the first frame is drawn */
+#view canvas{opacity:0;transition:opacity 420ms var(--ease)}
+#view canvas[data-ready]{opacity:1}

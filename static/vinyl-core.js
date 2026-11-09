@@ -4,7 +4,7 @@
    the page has no Python server (GitHub Pages); the local app keeps serve.py. */
 (function(root){
 'use strict';
-const MAX_SECONDS=480, FS=16000, TAU=2*Math.PI;
+const MAX_SECONDS=270, FS=16000, TAU=2*Math.PI; // 4:30: beyond it the groove swing drops under ~1.45 px
 const VECTOR_FORMAT='pcm16-mono-displacement-v1';
 
 /* ---------- numeric helpers matching numpy ---------- */
@@ -112,7 +112,7 @@ function parameters(duration,size=4096){
   thickness_mm:2.5,sample_rate:fs,duration_sec:duration,lead_in_turns:lead,lead_out_turns:.5,image_size:size,height_scale_mm:2.55,
   audio_storage:'Explicit prepared-displacement vector master + PNG depth export; never the original upload.',
   riaa:'none (custom reversible presence shelf, not RIAA)',max_duration_sec:MAX_SECONDS,
-  warning:'Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.'};
+  warning:'Raster-limited lo-fi mono. Audio past 4:30 is left off. Not a physical stylus simulator.'};
  Object.assign(m,{packing_mode:'outer-band-if-room-v1',height_polarity:'inverted',bandlimit_mode:'radius-following-v1',bandlimit_cap_hz:6500,
   filter_window_samples:1024,filter_hop_samples:256,raster_subsamples:4,preemphasis:'presence-shelf-v1',
   presence_shelf:{frequency_hz:1500,gain_db:6,slope:1},outside_value:32768,outside_fill:'mid-grey'});
@@ -128,12 +128,13 @@ function prepareAudio(x,fs,m){
  if(peak>1e-9){const g=.90/peak;for(let i=0;i<y.length;i++)y[i]*=g;}
  return y;
 }
-// load_audio semantics on already-decoded mono samples: 16 kHz, max 480 s, min 0.1 s, NaN -> 0.
+// load_audio semantics on already-decoded mono samples: 16 kHz, max 270 s (flagged when cut short), min 0.1 s, NaN -> 0.
 function loadAudio(samples,fs=FS){
  if(fs!==FS)samples=resample(samples,fs,FS);
  const n=Math.min(samples.length,MAX_SECONDS*FS),x=new Float64Array(n);
- for(let i=0;i<n;i++){const v=samples[i];x[i]=Number.isNaN(v)?0:(v===Infinity?Number.MAX_VALUE:(v===-Infinity?-Number.MAX_VALUE:v));}
+ for(let i=0;i<n;i++){const v=samples[i];x[i]=Number.isNaN(v)?0:(v===Infinity?1:(v===-Infinity?-1:v));}
  if(x.length<1600)throw Error('Audio must be at least 0.1 seconds long.');
+ x.truncated=samples.length>MAX_SECONDS*FS;
  return x;
 }
 /* Rasterize an already prepared (quantized) vector; never re-filter it.
@@ -220,11 +221,10 @@ async function readMap(pngBytes,sidecarText){
  if(!raw){if(!sidecarText)throw Error('No vinyl metadata. Use an app-exported PNG (keep its metadata).');raw=sidecarText;}
  const m=JSON.parse(raw);validateMetadata(m,png.width);
  const n=png.width,stored=png.samples,image=new Float32Array(n*n);
- if((m.height_polarity??'standard')==='inverted'){
-  const R=m.disc_radius_mm,line=linspace(-R,R,n);
-  for(let r=0;r<n;r++){const ly=line[r];for(let c=0;c<n;c++){const lx=line[c],i=r*n+c;image[i]=Math.sqrt(lx*lx+ly*ly)<=R?65535-stored[i]:0;}}
- }else image.set(stored);
- return {image,m,stored,size:n};
+ // Outside the disc is fill, not surface: zero it for both polarities (matches decode.py).
+ const inv=(m.height_polarity??'standard')==='inverted',R=m.disc_radius_mm,line=linspace(-R,R,n);
+ for(let r=0;r<n;r++){const ly=line[r];for(let c=0;c<n;c++){const lx=line[c],i=r*n+c;image[i]=Math.sqrt(lx*lx+ly*ly)<=R?(inv?65535-stored[i]:stored[i]):0;}}
+ return {image,m,stored,size:n,text:png.text};
 }
 // map_coordinates(order=1, mode='nearest') on a float32 image, output float32.
 function decodeTrace(image,m,onProgress){
@@ -308,9 +308,9 @@ function parseWav(bytes){
   out[c][i]=v;}
  return {sampleRate:fmt.sampleRate,channels:ch,length:frames,format,data:out};
 }
-// WAV upload -> mono at its own rate (like ffmpeg -ac 1), truncated at 480 s before resampling.
+// WAV upload -> mono at its own rate (like ffmpeg -ac 1); one second past the limit is kept so the cut can tell it was truncated.
 function wavToMono(bytes){
- const w=parseWav(bytes),n=Math.min(w.length,MAX_SECONDS*w.sampleRate),x=new Float32Array(n),div=w.format==='int16'?32768:1;
+ const w=parseWav(bytes),n=Math.min(w.length,(MAX_SECONDS+1)*w.sampleRate),x=new Float32Array(n),div=w.format==='int16'?32768:1;
  for(let i=0;i<n;i++){let s=0;for(let c=0;c<w.channels;c++)s+=w.data[c][i]/div;x[i]=s/w.channels;}
  return {samples:x,sampleRate:w.sampleRate};
 }
@@ -421,19 +421,63 @@ function sha256Fallback(m){
 
 /* ---------- full pipelines (what serve.py's /api/encode and /api/import do) ---------- */
 // samples: mono Float32/64 at sampleRate. Returns the delivery set as bytes.
-async function encodeRecord(samples,sampleRate,size=4096,onStage=()=>{}){
+/* Song tags and the front cover travel inside the record PNG as two more text
+   chunks beside 'vinyl': 'vinyl-tags' (JSON) and 'vinyl-cover' (a JPEG data URL).
+   They never touch the groove pixels or the spiral metadata. */
+const COVER_PREFIX='data:image/jpeg;base64,';
+function cleanExtras(x){
+ const out={};if(!x)return out;
+ if(typeof x.cover==='string'&&x.cover.startsWith(COVER_PREFIX)&&x.cover.length<1.5e6)out['vinyl-cover']=x.cover;
+ const t=x.tags&&typeof x.tags==='object'?x.tags:null,tags={};
+ if(t)for(const k of ['title','artist','album','year'])if(typeof t[k]==='string'&&t[k].trim())tags[k]=t[k].trim().slice(0,200);
+ if(Object.keys(tags).length)out['vinyl-tags']=JSON.stringify(tags);
+ return out;
+}
+function readExtras(text){
+ const cover=typeof text?.['vinyl-cover']==='string'&&text['vinyl-cover'].startsWith(COVER_PREFIX)?text['vinyl-cover']:null;
+ let tags=null;try{tags=text?.['vinyl-tags']?JSON.parse(text['vinyl-tags']):null;}catch{tags=null;}
+ const kept=cleanExtras({tags})['vinyl-tags'];
+ return {cover,tags:kept?JSON.parse(kept):null};
+}
+/* The title, artist and rings pressed into the label area as greyscale relief, cut as
+   deep as the groove (encode.py label_relief does the same with Pillow). The label lies
+   inside the run-out, which is never traced, so the sound is untouched. Needs
+   OffscreenCanvas (every current browser, in a worker too); without it the label stays plain. */
+const LABEL_DEPTH_MM=.45;
+function labelRelief(stored,m,tags){
+ const title=tags&&tags.title;if(!title||typeof OffscreenCanvas!=='function')return false;
+ const n=m.image_size,R=m.disc_radius_mm,L=m.label_radius_mm-.6,ppm=(n-1)/(2*R),Lp=L*ppm,S=Math.ceil(2*Lp)+4,c=S/2;
+ const cv=new OffscreenCanvas(S,S),g=cv.getContext('2d');if(!g)return false;
+ g.fillStyle='#fff';g.strokeStyle='#fff';g.lineWidth=Math.max(1,Math.round(Lp*.014));g.textAlign='center';g.textBaseline='middle';
+ for(const r of [.96,.9,.24]){g.beginPath();g.arc(c,c,Lp*r,0,Math.PI*2);g.stroke();}
+ const face=px=>`${Math.max(8,Math.round(px))}px Georgia, "DejaVu Serif", serif`;
+ const fit=(t,px,w)=>{g.font=face(px);while(px>8&&g.measureText(t).width>w){px*=.92;g.font=face(px);}};
+ const words=title.toUpperCase().split(/\s+/),lines=[];let cur='';g.font=face(Lp*.17);
+ for(const wd of words){const trial=(cur+' '+wd).trim();if(cur&&g.measureText(trial).width>Lp*1.3){lines.push(cur);cur=wd;}else cur=trial;}lines.push(cur);
+ let y=c-Lp*.6;for(const ln of lines.slice(0,2)){fit(ln,Lp*.17,Lp*1.4);g.fillText(ln,c,y);y+=Lp*.2;}
+ if(tags.artist){const a=tags.artist.toUpperCase().slice(0,40);fit(a,Lp*.1,Lp*1.3);g.fillText(a,c,c+Lp*.48);}
+ const sec=Math.floor(m.duration_sec),small=`${Math.abs(m.rpm_cut-100/3)<.05?'33 1/3':Math.round(m.rpm_cut)} RPM  ·  ${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+ fit(small,Lp*.075,Lp);g.fillText(small,c,c+Lp*.68);
+ const a=g.getImageData(0,0,S,S).data,o=Math.round((n-1)/2-c),inv=(m.height_polarity??'standard')==='inverted',dv=LABEL_DEPTH_MM/m.height_scale_mm*65535,line=linspace(-R,R,n);
+ for(let y2=0;y2<S;y2++){const yy=y2+o;if(yy<0||yy>=n)continue;for(let x2=0;x2<S;x2++){const xx=x2+o;if(xx<0||xx>=n)continue;const cov=a[(y2*S+x2)*4+3]/255;if(!cov)continue;
+  const rr=Math.hypot(line[xx],line[yy]);if(rr>=L||rr<=4.2)continue;const i=yy*n+xx,v=stored[i]+(inv?1:-1)*cov*dv;stored[i]=Math.max(0,Math.min(65535,Math.round(v)));}}
+ return true;
+}
+async function encodeRecord(samples,sampleRate,size=4096,onStage=()=>{},extras=null){
  if(size!==2048&&size!==4096)throw Error('Choose a 2048 or 4096 map.');
  onStage('cutting',0);
- const x0=loadAudio(samples,sampleRate),m=parameters(x0.length/FS,size),prepared=prepareAudio(x0,FS,m);
+ const x0=loadAudio(samples,sampleRate),m=parameters(x0.length/FS,size);m.source_truncated=!!x0.truncated;const prepared=prepareAudio(x0,FS,m);
  const vec=await writeVector(prepared,m);
  const stored=rasterize(vec.x,FS,m,f=>onStage('cutting',f));
- const png=await encodePng({width:size,height:size,colorType:0,bitDepth:16,samples:stored,text:{vinyl:JSON.stringify(m)}});
+ const more=cleanExtras(extras);
+ if(more['vinyl-tags'])labelRelief(stored,m,JSON.parse(more['vinyl-tags']));
+ const png=await encodePng({width:size,height:size,colorType:0,bitDepth:16,samples:stored,text:{vinyl:JSON.stringify(m),...more}});
  onStage('tracing',0);
  // read the cut back the way the Player will: PNG + metadata + checksummed groove master
  const back=await readMap(png);await readVector(vec.wav,back.m);
  onStage('proofing',0);
  const preview=await writePreview(stored,size,m);
- return {metadata:back.m,png,groove:vec.wav,json:JSON.stringify(back.m,null,2),preview,has_vector:true,playback_source:'vector'};
+ return {metadata:back.m,png,groove:vec.wav,json:JSON.stringify(back.m,null,2),preview,has_vector:true,playback_source:'vector',...readExtras(back.text)};
 }
 async function importRecord({png,vector,json},onStage=()=>{}){
  if(!png)throw Error('Pick a PNG, or a vector WAV plus matching JSON.');
@@ -446,11 +490,11 @@ async function importRecord({png,vector,json},onStage=()=>{}){
  const has=!!vector;
  return {metadata:m,playback_source:origin,has_vector:has,has_png:true,
   audio_origin:has?'Both sources ready: use Playback to hear the vector master or the PNG trace. Never the original upload.':'PNG-only: traced from heightmap.png pixels; no vector or original upload is used.',
-  playback:{png:pcmToFloat(playbackPcm(pngAudio)),vector:vectorAudio?pcmToFloat(playbackPcm(vectorAudio)):null},preview};
+  playback:{png:pcmToFloat(playbackPcm(pngAudio)),vector:vectorAudio?pcmToFloat(playbackPcm(vectorAudio)):null},preview,...readExtras(map.text)};
 }
 
 const api={MAX_SECONDS,VECTOR_FORMAT,rint,linspace,shelfCoefficients,lfilter,presence,radiusCutoff,adaptiveBandlimit,butterLowpassSos,sosfiltfilt,postprocess,
  parameters,prepareAudio,loadAudio,rasterize,quantizeVector,writeVector,readVector,decodeVector,validateMetadata,readMap,decodeTrace,
- playbackPcm,pcmToFloat,writePreview,writeWav16,parseWav,isWav,wavToMono,resample,encodePng,decodePng,sha256Hex,sha256Fallback,encodeRecord,importRecord};
+ playbackPcm,pcmToFloat,writePreview,cleanExtras,readExtras,writeWav16,parseWav,isWav,wavToMono,resample,encodePng,decodePng,sha256Hex,sha256Fallback,encodeRecord,importRecord};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.VinylCore=api;
 })(typeof self!=='undefined'?self:this);

@@ -7,6 +7,7 @@ const $=id=>document.getElementById(id);
 let cut=null;          // cut record {metadata, has_vector} (+ id/base from serve.py)
 let files=[];          // [{key, name, label, note, blob, checked}]
 let busy=false;
+let audio=null,picture=null,found={tags:{},cover:null,from:''},readToken=0; // chosen audio, optional picture, what we read from them
 const FS_DIR='showDirectoryPicker' in window, FS_FILE='showSaveFilePicker' in window;
 /* serve.py answers api/progress; GitHub Pages and other static hosts do not. Relative
    URL so it resolves to /api/progress locally and under /vinyl-sim/ on Pages. */
@@ -23,18 +24,43 @@ function clearFault(){$('fault').hidden=true;}
 /* ---------- source selection ---------- */
 function sourceMode(){return document.querySelector('input[name=src]:checked').value;}
 function refreshSource(){
- const f=$('audioFile').files[0],mode=sourceMode();
+ const f=audio,mode=sourceMode();
  $('fileName').textContent=f?f.name:'No file chosen';
  $('choose').disabled=busy||mode!=='file';
  $('cut').disabled=busy||(mode==='file'&&!f);
  for(const r of document.querySelectorAll('input[name=size]')){r.disabled=busy||mode==='sample';if(mode==='sample'&&r.value==='4096')r.checked=true;}
  $('sizeNote').textContent=mode==='sample'?'The original tune is always cut at 4096.':'4096 follows the groove radius for bandwidth; 2048 is lighter and duller.';
- if(!$('recordName').dataset.touched)$('recordName').value=mode==='sample'?'original-tune':(f?stem(f.name):'');
+ if(!$('recordName').dataset.touched)$('recordName').value=mode==='sample'?'original-tune':(f?safeName(found.tags.title?window.VinylTags.displayName(found.tags,stem(f.name)).replace(' — ',' - '):stem(f.name)):'');
+ renderArt();
 }
 function stem(n){return n.replace(/\.[^.]+$/,'');}
 function safeName(n){n=(n||'').trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'-').replace(/\s+/g,' ').replace(/^\.+/,'');return n.slice(0,120)||'record';}
 $('choose').onclick=()=>$('audioFile').click();
-$('audioFile').onchange=()=>{document.querySelector('input[name=src][value=file]').checked=true;refreshSource();};
+/* Pick the audio, optionally with a picture: the first image chosen becomes the cover.
+   Otherwise the cover and title come from the audio file's own tags. */
+let artUrl=null;
+function renderArt(){
+ const row=$('artRow'),on=sourceMode()==='file'&&audio&&(found.cover||found.tags.title);row.hidden=!on;if(!on)return;
+ const img=$('artThumb');if(found.cover){img.src=found.cover;img.hidden=false;}else{img.removeAttribute('src');img.hidden=true;}
+ const t=found.tags,name=t.title?window.VinylTags.displayName(t,''):'';
+ $('artNote').textContent=[name,found.cover?(found.from==='picture'?'Cover from '+picture.name:'Cover from the file’s tags'):'No cover in the file — the sleeve gets the Deco card'].filter(Boolean).join(' · ');
+}
+async function readSource(){
+ const token=++readToken;found={tags:{},cover:null,from:''};refreshSource();if(!audio)return;
+ try{
+  const tags=window.VinylTags.readTags(await audio.slice(0,Math.min(audio.size,64*1024*1024)).arrayBuffer());if(token!==readToken)return;
+  const {picture:embedded,...words}=tags;found.tags=words;
+  if(picture){found.cover=await window.VinylTags.normaliseCover(picture);found.from='picture';}
+  else if(embedded){found.cover=await window.VinylTags.normaliseCover(embedded.bytes,embedded.mime);found.from='tags';}
+ }catch{}
+ if(token===readToken)refreshSource();
+}
+$('audioFile').onchange=()=>{
+ const list=[...$('audioFile').files];if(!list.length)return;
+ const a=list.find(f=>/^audio\//.test(f.type)||/\.(mp3|wav|flac|ogg|oga|opus|m4a|aac|aif|aiff)$/i.test(f.name)),p=list.find(f=>/^image\//.test(f.type));
+ if(a){audio=a;picture=p||null;}else if(p){picture=p;} // a picture on its own just replaces the cover
+ document.querySelector('input[name=src][value=file]').checked=true;$('audioFile').value='';readSource();
+};
 for(const r of document.querySelectorAll('input[name=src]'))r.onchange=refreshSource;
 $('recordName').oninput=()=>{$('recordName').dataset.touched='1';renderFiles();};
 
@@ -55,7 +81,7 @@ function startTraverse(id,word,poll=true){
  pollTimer=setInterval(async()=>{
   const secs=((performance.now()-started)/1000).toFixed(0);$('elapsed').textContent=secs+' s';
   if(!poll)return; // in-browser cuts report their stages straight from the worker
-  try{const r=await fetch('/api/progress?job='+id);const p=await r.json();
+  try{const r=await fetch('api/progress?job='+id);const p=await r.json();
    if(p.stage in STAGE_AT&&p.stage!=='received')traverse(STAGE_AT[p.stage],STAGE_TEXT[p.stage]);}catch{}
  },500);
 }
@@ -75,7 +101,7 @@ function lock(on){busy=on;document.body.toggleAttribute('data-busy',on);
  if(!on){for(const el of document.querySelectorAll('#desk input'))el.disabled=false;refreshSource();renderFiles();}}
 $('cut').onclick=async()=>{
  if(busy)return;clearFault();
- const mode=sourceMode(),f=$('audioFile').files[0];
+ const mode=sourceMode(),f=audio;
  if(mode==='file'&&!f){fault('Choose an audio file first, or pick the original 11-second tune.');return;}
  const id=job();lock(true);setState('cutting');cut=null;files=[];renderFiles();showProof(null);
  try{
@@ -85,16 +111,17 @@ $('cut').onclick=async()=>{
   let data;
   if(!local)data=await cutInBrowser(mode,f);
   else{
-   if(mode==='sample'){traverse(STAGE_AT.cutting,STAGE_TEXT.cutting);data=await post('/api/sample',null,id);}
+   if(mode==='sample'){traverse(STAGE_AT.cutting,STAGE_TEXT.cutting);data=await post('api/sample',null,id);}
    else{const form=new FormData();form.append('file',f);form.append('size',document.querySelector('input[name=size]:checked').value);
-    data=await post('/api/encode',form,id,p=>{traverse(p*.14,p<1?`Sending audio ${Math.round(p*100)}%`:STAGE_TEXT.cutting);if(p>=1)say('Cutting the groove…');});}
+    if(found.cover)form.append('cover',await (await fetch(found.cover)).blob(),'cover.jpg');if(Object.keys(found.tags).length)form.append('tags',JSON.stringify(found.tags));
+    data=await post('api/encode',form,id,p=>{traverse(p*.14,p<1?`Sending audio ${Math.round(p*100)}%`:STAGE_TEXT.cutting);if(p>=1)say('Cutting the groove…');});}
    traverse(.96,'Collecting the cut');say('Collecting the cut files…');
    await collect(data);
   }
   cut=data;
   traverse(1,STAGE_TEXT.done);setState('done');
   const m=data.metadata;
-  say(`Cut complete. ${m.image_size} map · ${Math.round(m.disc_radius_mm*2)} mm at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${m.duration_sec.toFixed(1)} s. Choose where to save it.`);
+  say(`Cut complete.${m.source_truncated?' The song ran past 4:30, so only its first 4:30 is on the record.':''} ${m.image_size} map · ${Math.round(m.disc_radius_mm*2)} mm at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${m.duration_sec.toFixed(1)} s. Choose where to save it.`);
   showProof(data.previewUrl||data.base+'preview.png');
  }catch(e){console.error(e);fault(e.message);}
  finally{stopTraverse();lock(false);}
@@ -116,7 +143,8 @@ async function cutInBrowser(mode,f){
  if(mode==='sample'){const r=await fetch('samples/original.wav');if(!r.ok)throw Error('Could not fetch the original tune.');bytes=await r.arrayBuffer();size='4096';}
  else bytes=await f.arrayBuffer();
  const span={cutting:[STAGE_AT.cutting,STAGE_AT.tracing],tracing:[STAGE_AT.tracing,STAGE_AT.proofing],proofing:[STAGE_AT.proofing,.96]};
- const r=await window.VinylBrowser.cut(bytes,Number(size),(stage,fr)=>{const [a,b]=span[stage]||[0,0];traverse(a+(b-a)*fr,STAGE_TEXT[stage]||stage);});
+ const extras=mode==='file'?{cover:found.cover,tags:found.tags}:null;
+ const r=await window.VinylBrowser.cut(bytes,Number(size),(stage,fr)=>{const [a,b]=span[stage]||[0,0];traverse(a+(b-a)*fr,STAGE_TEXT[stage]||stage);},extras);
  traverse(.96,'Collecting the cut');
  const make=(key,data,mime)=>({key,blob:new Blob([data],{type:mime})});
  const set=[make('png',r.png,'image/png'),make('wav',r.groove,'audio/wav'),make('json',r.json,'application/json'),make('preview',r.preview,'image/png')];

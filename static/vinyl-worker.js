@@ -10,7 +10,7 @@ self.onmessage=async e=>{
   if(type==='encode'){
    let {samples,sampleRate}=e.data;
    if(e.data.wav){const w=VinylCore.wavToMono(e.data.wav);samples=w.samples;sampleRate=w.sampleRate;}
-   result=await VinylCore.encodeRecord(samples,sampleRate,Number(e.data.size)||4096,stage);
+   result=await VinylCore.encodeRecord(samples,sampleRate,Number(e.data.size)||4096,stage,e.data.extras||null);
    transfer=[result.png.buffer,result.groove.buffer,result.preview.buffer];
   }else if(type==='import'){
    result=await VinylCore.importRecord(e.data,stage);

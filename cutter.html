@@ -30,9 +30,13 @@
           <legend class="sr-only">Audio to cut</legend>
           <label class="option"><input type="radio" name="src" value="file" checked><span>Your audio file</span></label>
           <div class="file-row">
-            <input id="audioFile" class="sr-only" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a" tabindex="-1">
+            <input id="audioFile" class="sr-only" type="file" multiple accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,image/jpeg,image/png,image/webp" tabindex="-1">
             <button id="choose" class="btn" type="button">Choose audio…</button>
             <span id="fileName" class="file-name">No file chosen</span>
+          </div>
+          <div class="art-row" id="artRow" hidden>
+            <img id="artThumb" class="art-thumb" alt="">
+            <p class="note" id="artNote"></p>
           </div>
           <label class="option"><input type="radio" name="src" value="sample"><span>The original 11-second tune</span></label>
         </fieldset>
@@ -47,7 +51,7 @@
         </div>
 
         <button id="cut" class="btn brass engage" type="button" disabled>Cut</button>
-        <p class="note">Up to eight minutes; longer audio is truncated.</p>
+        <p class="note">Up to 4½ minutes; anything longer is cut to its first 4:30. Cover art and the song title come from the file’s tags, or pick a picture together with the audio (cover.jpg from the album folder, say).</p>
       </section>
 
       <!-- 2 · Lathe -->
@@ -107,6 +111,7 @@
     </ul></div>
   </details>
 </div>
+<script src="static/tags.js"></script>
 <script src="static/vinyl-client.js"></script>
 <script src="static/cutter.js"></script>
 </body>

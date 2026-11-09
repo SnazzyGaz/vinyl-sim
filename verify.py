@@ -69,7 +69,9 @@ def run(long=False):
         except ValueError:checks['mismatched_vector_rejected']=True
         else:raise AssertionError('Mismatched vector accepted')
         with Image.open(temp/'preview.png') as im:
-            preview=np.asarray(im);checks['preview_max_8bit']=int(preview.max());assert preview.max()<=28
+            preview=np.asarray(im);checks['preview_max_8bit']=int(preview.max())
+            # 8-bit RGB viewing picture (red label, grey surround); must never import.
+            assert preview.ndim==3 and preview.dtype==np.uint8
         try: read_map(temp/'preview.png')
         except ValueError: checks['preview_import_rejected']=True
         else: raise AssertionError('Preview was importable')
@@ -96,7 +98,7 @@ def run(long=False):
     checks['legacy_2048_quality']=quality(lr,ly,lm['sample_rate']);assert checks['legacy_2048_quality']['pearson']>.9
     # Packing never trades away long-song duration for a larger inner radius.
     for size in (2048,4096):
-        for duration in (.1,11.63475,40,41,120,121,480):
+        for duration in (.1,11.63475,40,41,120,121,270):
             mm=parameters(duration,size)
             end=mm['r_start_mm']-mm['pitch_mm']*(mm['lead_in_turns']+duration*mm['rpm_cut']/60+mm['lead_out_turns'])
             assert end>=mm['label_radius_mm']+2.99
@@ -104,7 +106,13 @@ def run(long=False):
             fitted=(mm['r_start_mm']-mm['label_radius_mm']-3)/(duration*mm['rpm_cut']/60+mm['lead_in_turns']+mm['lead_out_turns'])
             assert abs(mm['pitch_mm']-min(2.,fitted))<1e-10
     checks['2048_4096_duration_packing']=True
-    rep=dict(project=str(ROOT),run='python3 serve.py --port 8765',url='http://127.0.0.1:8765/',sample_metadata=m,
+    # Past 4:30 the cut keeps the first 4:30 and says so; under it nothing is flagged.
+    with tempfile.TemporaryDirectory() as temp:
+        temp=Path(temp);t=np.arange(int(280*8000))/8000;wavfile.write(temp/'long.wav',8000,(np.sin(2*np.pi*220*t)*.3*32767).astype(np.int16))
+        lm2=encode(temp/'long.wav',temp/'long.png',2048);assert lm2['duration_sec']==270 and lm2['source_truncated'] is True
+        assert m['source_truncated'] is False
+    checks['cut_capped_at_4m30_and_flagged']=True
+    rep=dict(project=ROOT.name,run='python3 serve.py --port 8765',url='http://127.0.0.1:8765/',sample_metadata=m,
         quality_vs_bandlimited_original=q,quality_vs_fullband_original=quality(full,yup,fs),
         vector_vs_prepared_deemphasized_reference=vq,png_vs_same_vector_reference=pq,vector_vs_fullband_original=quality(x[:len(vy)],vy,fs),
         reference_definitions=dict(vector='Prepared mono -> inverse presence shelf only; PCM16 quantization error, no second lowpass.',png_same_vector='PNG-traced output compared with that same de-emphasized prepared reference; includes raster and cleanup changes.',png_raster_only='Prepared reference also receives PNG-side adaptive cleanup and inverse shelf; isolates raster loss.',fullband='Original mono, no cut preparation; gain-fitted comparison. Instrumental test only, not vocals.'),
@@ -120,8 +128,8 @@ def run(long=False):
             'Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload.',
             'New exports use v2 because old v1 decoders silently ignored polarity; this decoder reads both v1 and v2.',
             'Pinned three.js/OrbitControls CDN needs internet; local Python processing and audio are local.',
-            '8 minutes maximum, 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features.'],
-        files={name:str(out/name) for name in ['sample.png','sample.json','sample.groove.wav','sample-decoded.wav','sample-png-decoded.wav','sample-bandlimited-reference.wav','sample-preview.png','sample-playback.wav']})
+            '4:30 maximum (longer audio is cut to its first 4:30; older records up to 8 min still open), 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features.'],
+        files={name:'output/'+name for name in ['sample.png','sample.json','sample.groove.wav','sample-decoded.wav','sample-png-decoded.wav','sample-bandlimited-reference.wav','sample-preview.png','sample-playback.wav']})
     if long:
         rawfs,raw=wavfile.read(ROOT/'samples/original.wav'); raw=raw[::3];rawfs//=3
         ext=np.tile(raw,int(np.ceil(180*rawfs/len(raw))))[:180*rawfs]

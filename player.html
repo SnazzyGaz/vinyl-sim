@@ -6,7 +6,8 @@
 <title>Player — Vinyl Sim</title>
 <link rel="stylesheet" href="static/deco.css">
 <link rel="stylesheet" href="static/player.css">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
+<script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.min.js","three/addons/":"./static/vendor/three/addons/"}}</script>
+<link rel="modulepreload" href="static/vendor/three/three.module.min.js">
 </head>
 <body class="room-player" data-record="none">
 <div class="cabinet">
@@ -87,6 +88,10 @@
       <div class="plate view-plate">
         <button id="inspectRecord" class="btn" type="button" disabled>Inspect record</button>
         <button id="resetView" class="btn" type="button">Reset view</button>
+        <label class="label quality-row" for="quality"><span>Picture</span>
+          <select id="quality" class="quality">
+            <option value="auto">Auto</option><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Low</option>
+          </select><output id="qualityTier" class="figures"></output></label>
       </div>
 
       <p id="status" class="status-line" role="status">Open a record to begin.</p>
@@ -104,10 +109,11 @@
         <li><strong>Inspect:</strong> with the needle lifted, pick up the disc (or use Inspect record). Drag to turn it, scroll to study the grooves. Double-click, Esc or Put record back returns it to the spindle.</li>
         <li><strong>Scratch:</strong> while playing, hold the disc to stop it; drag around the centre to scratch back and forth. Let go and it plays on from there.</li>
         <li><strong>Position:</strong> the record turns under a fixed needle. Moving Position while the needle is lifted will not drop it.</li>
-        <li><strong>View:</strong> wheel zooms a little, right-drag swings round the front of the machine, middle-drag dollies. Reset view restores the camera.</li>
+        <li><strong>View:</strong> wheel zooms, right-drag swings round the front of the machine, middle-drag dollies. The camera stays where you leave it when you swap or inspect records; Reset view glides back to the default seat.</li>
+        <li><strong>Picture:</strong> Auto picks High, Balanced or Low for your graphics card and steps down if frames get slow. The scene only redraws when something moves, so an idle player costs almost nothing.</li>
         <li><strong>Speed:</strong> 33⅓ / 45 / 78 or the fine knob. Pitch and duration change together.</li>
         <li><strong>Sources:</strong> with its groove WAV and JSON the record plays from the vector master; a PNG alone is traced from its pixels and is deliberately lo-fi. The 8-bit viewing picture is not a record.</li>
-        <li>This is a digital stylus. Mono, no RIAA. Records open on this computer and are never uploaded; the 3D turntable needs the Three.js library from the internet.</li>
+        <li>This is a digital stylus. Mono, no RIAA. Records open on this computer and are never uploaded. Everything runs offline.</li>
       </ul>
       <details class="meta"><summary class="label">Spiral metadata</summary><pre id="metadata">No record open.</pre></details>
     </div>

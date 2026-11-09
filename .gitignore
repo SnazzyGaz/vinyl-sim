@@ -8,3 +8,13 @@ vinyl-project.zip
 *.pre-phonograph.js
 .DS_Store
 server.log
+# local only, not part of the site
+Claude outputs/
+_pre-overhaul-backup/
+node_modules/
+# old pre-Pages copies (removed from git in d2ee46b)
+static/app.js
+static/style.css
+static/cutter.html
+static/index.html
+static/player.html

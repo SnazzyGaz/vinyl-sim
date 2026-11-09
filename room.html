@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vinyl Sim — The Room</title>
+<link rel="stylesheet" href="static/deco.css">
+<link rel="stylesheet" href="static/oneroom.css">
+<script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.min.js","three/addons/":"./static/vendor/three/addons/"}}</script>
+<link rel="modulepreload" href="static/vendor/three/three.module.min.js">
+</head>
+<body class="room" data-mode="room" data-record="none">
+<!-- The whole app is this one scene. Controls live on the machine; the strip at the
+     bottom fades while you are not using it. Every control also has a key (press ?). -->
+<div id="well" class="stage">
+  <div id="view"><p id="viewFallback">The room is loading…</p></div>
+</div>
+
+<header class="plate-top">
+  <a class="home" href="index.html" aria-label="Vinyl Sim home">Vinyl Sim</a>
+  <p class="record-card" aria-live="polite"><span id="recordName" class="record-name">No record on the platter</span><span id="recordFacts" class="record-facts figures">Drop a song anywhere to cut it</span></p>
+</header>
+
+<div id="dropHint" class="drop-hint" aria-hidden="true"><span>Let go to cut a record</span></div>
+<ol id="tags" class="tags" aria-live="polite"></ol>
+
+<input id="recordFile" type="file" multiple hidden accept=".png,.wav,.json,image/png,audio/wav,application/json">
+<input id="roomFile" type="file" multiple hidden accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.png,.json,image/png,image/jpeg,image/webp,application/json">
+
+<nav id="hud" class="hud" aria-label="Turntable">
+  <button id="open" class="key" type="button" title="Open a song to cut, or a record to play (O)"><span aria-hidden="true">＋</span><span class="sr-only">Open</span></button>
+  <button id="needle" class="key brass" type="button" disabled aria-pressed="false" title="Drop or lift the needle (Space)">Drop needle</button>
+  <div class="readout">
+    <span class="lamp" id="lamp" data-state="off" aria-hidden="true"></span>
+    <span id="needleState" class="state">Needle lifted</span>
+    <span id="clock" class="figures clock">0:00.0 / 0:00.0</span>
+    <span id="needleSource" class="sr-only">No record</span>
+  </div>
+  <label class="seek"><span class="sr-only">Position</span><input id="seek" type="range" min="0" max="1000" step="1" value="0" disabled></label>
+  <div class="speeds" role="radiogroup" aria-label="Speed">
+    <label><input type="radio" name="rpmPreset" value="33.333333" disabled><span>33⅓</span></label>
+    <label><input type="radio" name="rpmPreset" value="45" checked disabled><span>45</span></label>
+    <label><input type="radio" name="rpmPreset" value="78" disabled><span>78</span></label>
+  </div>
+  <label class="slider" title="Volume (Up / Down)"><span class="label">Vol</span><input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"><output id="volumeValue" class="figures">70</output></label>
+  <div id="sourcePlate" class="source" data-both="false" role="radiogroup" aria-label="Source (V)">
+    <label><input type="radio" name="source" value="vector" disabled><span>Vector</span></label>
+    <label><input type="radio" name="source" value="png" disabled><span>PNG</span></label>
+  </div>
+  <button id="inspectRecord" class="key" type="button" disabled title="Pick the record up (I)">Inspect</button>
+  <button id="saveRecord" class="key" type="button" title="Save the record on the platter (S)">Save</button>
+  <button id="resetView" class="key" type="button" title="Back to the default seat (Home)">Reset</button>
+  <button id="helpButton" class="key" type="button" aria-expanded="false" aria-controls="help" title="Keys and handling (?)">?</button>
+</nav>
+<p id="status" class="status" role="status">The room is loading…</p>
+<p id="fault" class="fault" role="alert" hidden></p>
+<span id="ratio" hidden></span><span id="origin" hidden></span><pre id="metadata" hidden></pre>
+
+<section id="help" class="help-card" hidden aria-labelledby="helpTitle">
+  <h2 id="helpTitle">Handling</h2>
+  <dl>
+    <dt>Cut a record</dt><dd>Drop a song anywhere, or click the stack of blanks on the bench (O). A picture dropped with it becomes the cover. Up to 4:30. The finished record is filed in the crate; records you open are filed there too.</dd>
+    <dt>Play</dt><dd>Carry a sleeve from the crate over the cabinet and let go when the rim glows; the empty sleeve goes back in the crate. Lift or lower the arm, or press Space.</dd>
+    <dt>Shelf</dt><dd>Every record you cut or open stands in the crate by the machine and is still there next visit. Hover the crate to browse titles; drag one to the gramophone to play it. Delete takes the hovered record off the shelf.</dd>
+    <dt>Sleeves</dt><dd>Put them down anywhere on the floor; they stay. Back into the crate, or onto the post tray to save.</dd>
+    <dt>Inspect</dt><dd>With the needle up, pick the record off the platter (I). Drag to turn it, scroll to look closer; Esc puts it back.</dd>
+    <dt>Scratch</dt><dd>While playing, hold the record and drag round the centre.</dd>
+    <dt>View</dt><dd>Right-drag to walk round the front, wheel to move closer. Home goes back to the default seat.</dd>
+  </dl>
+  <h3>Fine controls</h3>
+  <div class="settings">
+    <label class="slider" title="Fine speed ([ and ])"><span class="label">RPM</span><input id="rpm" type="range" min="10" max="100" step="0.1" value="45" disabled><output id="rpmValue" class="figures">45.0</output></label>
+    <label class="slider" title="Picture quality"><span class="label">Picture</span><select id="quality" class="quality"><option value="auto">Auto</option><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Low</option></select><output id="qualityTier" class="figures"></output></label>
+  </div>
+  <h3>Keys</h3>
+  <p class="keys"><kbd>Space</kbd> needle · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 33⅓ / 45 / 78 · <kbd>[</kbd><kbd>]</kbd> fine speed · <kbd>↑</kbd><kbd>↓</kbd> volume · <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>V</kbd> source · <kbd>I</kbd> inspect · <kbd>O</kbd> open · <kbd>S</kbd> save · <kbd>Del</kbd> off the shelf · <kbd>Home</kbd> view · <kbd>?</kbd> this card</p>
+  <p class="note">Mono, raster-limited and lo-fi on purpose: this is a digital stylus reading a 16-bit picture. Everything runs on this computer; nothing is uploaded.</p>
+</section>
+
+<script src="static/tags.js"></script>
+<script src="static/vinyl-client.js"></script>
+<script src="static/player.js"></script>
+<script src="static/oneroom.js"></script>
+<script type="module" src="static/view.js"></script>
+</body>
+</html>

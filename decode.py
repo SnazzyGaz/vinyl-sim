@@ -14,6 +14,7 @@ def validate_metadata(m, size=None):
     keys=['rpm_cut','pitch_mm','r_start_mm','disc_radius_mm','label_radius_mm','amp_mm','groove_width_mm','groove_depth_mm','thickness_mm','sample_rate','duration_sec','lead_in_turns','bandlimit_hz','height_scale_mm']
     for k in keys:
         if not isinstance(m.get(k),(int,float)) or not np.isfinite(m[k]) or m[k]<=0: raise ValueError('Invalid metadata: '+k)
+    # 480 s stays accepted: records cut before the 4:30 limit must still open.
     if not (0.1<=m['duration_sec']<=480 and 800<=m['sample_rate']<=16000 and 1<=m['rpm_cut']<=100 and m['groove_width_mm']<m['pitch_mm'] and m['amp_mm']<m['pitch_mm']*.3 and m['image_size']==size):
         raise ValueError('Out-of-range groove metadata.')
     polarity=m.get('height_polarity','standard')
@@ -43,11 +44,13 @@ def read_map(path):
         validate_metadata(m,im.width)
         polarity=m.get('height_polarity','standard')
         image=np.array(im,dtype=np.float32)
-        if polarity=='inverted':
-            R=m['disc_radius_mm'];line=np.linspace(-R,R,im.width)
-            for row in range(0,im.height,64):
-                inside=np.hypot(line[None,:],line[row:row+64,None])<=R
-                image[row:row+64]=np.where(inside,65535-image[row:row+64],0)
+        # Outside the disc is fill (outside_value), not surface: zero it for
+        # both polarities so physical height is identical either way.
+        R=m['disc_radius_mm'];line=np.linspace(-R,R,im.width)
+        for row in range(0,im.height,64):
+            inside=np.hypot(line[None,:],line[row:row+64,None])<=R
+            block=65535-image[row:row+64] if polarity=='inverted' else image[row:row+64]
+            image[row:row+64]=np.where(inside,block,0)
         return image,m
 
 def decode(path, out=None):

@@ -149,12 +149,19 @@ function grabEnd(){
 let apiProbe=null;
 function localApi(){return apiProbe??=fetch('api/progress?job='+'0'.repeat(32),{cache:'no-store'})
  .then(async r=>{if(!r.ok)return false;const d=await r.json();return !!d&&typeof d==='object'&&'stage' in d;}).catch(()=>false);}
-let browserImports=0;
+/* Records opened or cut in the browser need IDs that stay unique across visits: they
+   key the shelf in IndexedDB. A per-page counter restarted at browser-1 on every visit
+   and overwrote the first stored record. Old browser-N records still load under their
+   own IDs; new ones never take that form. */
+function browserId(){
+ try{if(typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')return 'browser-'+crypto.randomUUID();}catch{}
+ return 'browser-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+}
 async function importInBrowser(parts){
  let r;try{r=await window.VinylBrowser.open(parts,stage=>status(stage==='proofing'?'Pulling a proof…':'Tracing the groove…','busy'));}
  catch(e){throw Error(/height map|metadata|polarity/i.test(e.message)?'That PNG is not a record from the Cutter. '+e.message:e.message);}
- return {id:'browser-'+(++browserImports),metadata:r.metadata,playback_source:r.playback_source,has_vector:r.has_vector,has_png:true,audio_origin:r.audio_origin,
-  base:'',previewUrl:URL.createObjectURL(new Blob([r.preview],{type:'image/png'})),playback:r.playback};
+ return {id:browserId(),metadata:r.metadata,playback_source:r.playback_source,has_vector:r.has_vector,has_png:true,audio_origin:r.audio_origin,
+  base:'',previewUrl:URL.createObjectURL(new Blob([r.preview],{type:'image/png'})),playback:r.playback,cover:r.cover||null,tags:r.tags||null};
 }
 async function request(url,body){
  const offline='The local server did not answer. Is serve.py still running?';
@@ -174,14 +181,51 @@ function enableControls(){
 }
 async function task(fn){if(busy)return;busy=true;$('open').disabled=true;$('needle').disabled=true;try{await fn();}catch(e){console.error(e);status(e.message,'error');}finally{busy=false;enableControls();}}
 function presetFor(v){for(const r of document.querySelectorAll('input[name=rpmPreset]'))r.checked=Math.abs(Number(r.value)-v)<.05;}
+/* ---------- the shelf: records kept in this browser between visits ----------
+   Every record you cut or open is stored (PNG, groove WAV, JSON, a preview) in
+   IndexedDB. On the next visit they come back as sleeves on the shelf, and are only
+   traced again when you actually put one on. No IndexedDB (tests, private modes): the
+   shelf simply forgets, as before. */
+const shelf={
+ db:null,
+ open(){return this.db??=new Promise(res=>{try{const q=indexedDB.open('vinyl-sim',1);q.onupgradeneeded=()=>q.result.createObjectStore('shelf',{keyPath:'id'});q.onsuccess=()=>res(q.result);q.onerror=()=>res(null);}catch{res(null);}});},
+ async run(mode,fn){const db=await this.open();if(!db)return null;return new Promise(res=>{try{const t=db.transaction('shelf',mode),st=t.objectStore('shelf'),q=fn(st);t.oncomplete=()=>res(q?.result??true);t.onerror=t.onabort=()=>res(null);}catch{res(null);}});},
+ put(rec){return this.run('readwrite',st=>st.put(rec));},
+ all(){return this.run('readonly',st=>st.getAll()).then(r=>r||[]);},
+ get(id){return this.run('readonly',st=>st.get(id));},
+ del(id){return this.run('readwrite',st=>st.delete(id));}
+};
+async function blobAt(url){try{const r=await fetch(url);return r.ok?await r.blob():null;}catch{return null;}}
+async function keepOnShelf(id,label,data,{png,groove,json}){
+ if(typeof indexedDB==='undefined'||!png||String(id).startsWith('demo'))return;
+ const previewBlob=data.cover?null:await blobAt(preview(data));
+ const ok=await shelf.put({id,label,tags:data.tags||null,cover:data.cover&&data.cover.startsWith('data:')?data.cover:null,coverBlob:data.cover&&!data.cover.startsWith('data:')?await blobAt(data.cover):null,metadata:data.metadata,png,groove:groove||null,json:json||null,preview:previewBlob,added:Date.now()});
+ if(ok){try{navigator.storage?.persist?.();}catch{}window.dispatchEvent?.(new CustomEvent('vinyl-shelved',{detail:{id,label}}));}
+}
+async function restoreShelf(){
+ if(typeof indexedDB==='undefined')return;
+ const all=(await shelf.all()).sort((a,b)=>a.added-b.added);let n=0;
+ for(const r of all){if(library.has(r.id))continue;
+  const data={id:r.id,metadata:r.metadata,base:'',cover:r.cover||(r.coverBlob?URL.createObjectURL(r.coverBlob):null),tags:r.tags,previewUrl:r.preview?URL.createObjectURL(r.preview):''};
+  library.set(r.id,{id:r.id,label:r.label,data,stub:{png:new File([r.png],(r.label||'record')+'.png',{type:'image/png'}),vector:r.groove,json:r.json},used:-all.length+(n++)});}
+ if(n)emitSleeves();
+}
 /* ---------- record library: every opened record keeps its decoded buffers ---------- */
 const library=new Map();let currentId=null,useCounter=0;
 function preview(data){return data.previewUrl||data.base+'preview.png';}
+// The song's own name when the cut carried its tags, else the file name.
+function titleFor(data,fallback){const t=data.tags;return t?.title?(t.artist?`${t.artist} — ${t.title}`:t.title):fallback;}
 function sleeveList(){
  return [...library.values()].filter(e=>e.id!==currentId).sort((a,b)=>b.used-a.used)
-  .map(e=>({id:e.id,label:e.label,cover:preview(e.data),facts:factsFor(e.data.metadata)}));
+  .map(sleeveOf);
 }
-function emitSleeves(){window.dispatchEvent(new CustomEvent('vinyl-sleeves',{detail:{current:currentId,count:library.size,sleeves:sleeveList()}}));}
+function sleeveOf(e){return {id:e.id,label:e.label,cover:e.data.cover||preview(e.data),art:!!e.data.cover,facts:factsFor(e.data.metadata)};}
+function currentSleeve(){const e=currentId!=null?library.get(currentId):null;return e?sleeveOf(e):null;}
+function emitSleeves(){window.dispatchEvent(new CustomEvent('vinyl-sleeves',{detail:{current:currentId,count:library.size,sleeves:sleeveList(),currentSleeve:currentSleeve()}}));}
+// The 3D view's one-line hints (e.g. while a sleeve is offered to the platter).
+let hintBefore=null;
+window.addEventListener?.('vinyl-hint',e=>{const t=e.detail?.text||'';const line=$('status');
+ if(t){if(hintBefore===null)hintBefore=line.textContent;line.textContent=t;}else if(hintBefore!==null){line.textContent=hintBefore;hintBefore=null;}});
 function factsFor(m){return `${Math.round(m.disc_radius_mm*2)} mm · cut at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${clock(m.duration_sec)}`;}
 function mount(entry,message){
  inspecting=false;
@@ -200,8 +244,8 @@ function mount(entry,message){
  status(message||(vectorBuffer&&pngBuffer?'Record open. Needle lifted. Both grooves are available — switch Source to compare.':(vectorBuffer?'Record open. Needle lifted. Playing from the vector master.':'Record open. Needle lifted. PNG trace only — expect a lo-fi groove.')));
  enableControls();emitSleeves();
 }
-async function load(data,label){
- lift();
+async function load(data,label,keepId,{play=true}={}){
+ if(play)lift(); // filing a record on the shelf leaves what is playing alone
  status('Tracing the groove…','busy');await ensureAudio(false);
  // decode into locals first: if this fails, the record already on the platter stays put
  let png=null,vec=null;
@@ -219,9 +263,10 @@ async function load(data,label){
   if(!png)png=data.has_vector?null:fallbackBuf;
   if(!vec&&data.has_vector)vec=fallbackBuf;
  }
- const id=data.id||data.base;
- const entry={id,label:label||'Record',data,pngBuffer:png,vectorBuffer:vec,used:0};
+ const id=keepId||data.id||data.base;
+ const entry={id,label:titleFor(data,label||'Record'),data,pngBuffer:png,vectorBuffer:vec,used:0};
  library.delete(id);library.set(id,entry);
+ if(!play){entry.used=++useCounter;status(`“${entry.label}” is on the shelf.`);emitSleeves();return;} // filed on the shelf, front of the crate; what is playing stays on
  mount(entry);
 }
 /* Hot-swap to a record already in the library (dragged sleeve). No re-import, no re-decode. */
@@ -229,6 +274,7 @@ function swapTo(id){
  if(busy)return false;
  const entry=library.get(id);if(!entry||id===currentId)return false;
  lift();$('fault').hidden=true;
+ if(entry.stub){task(async()=>{await openParts(entry.stub,entry.label,id);});return true;} // off the shelf: traced now
  mount(entry,`Swapped to “${entry.label}”. Needle lifted — drop it to play.`);
  return true;
 }
@@ -245,14 +291,27 @@ function classify(files){
  if(/\.preview\.png$/i.test(png.name))throw Error('That is the 8-bit viewing picture, not the record. Open the 16-bit height-map PNG.');
  return {png,vector,json};
 }
-function openFiles(list){return task(async()=>{
- const {png,vector,json}=classify([...list]);
- lift();status(vector?'Opening the record and its groove master…':'Opening the record…','busy');
- const label=png.name.replace(/\.png$/i,'');
- if(!(await localApi())){const data=await importInBrowser({png,vector,json});data.heightmapFile=png;await load(data,label);return;}
- const data=new FormData();data.append('file',png);if(vector)data.append('vector',vector);if(json)data.append('metadata',json);
- const opened=await request('/api/import',data);opened.heightmapFile=png;await load(opened,label);
-});}
+async function openParts({png,vector,json},label,keepId,opts){
+ if(opts?.play!==false)lift();status(keepId?'Taking it off the shelf: tracing the groove…':vector?'Opening the record and its groove master…':'Opening the record…','busy');
+ label=label||(png.name||'record').replace(/\.png$/i,'');
+ let data;
+ if(!(await localApi())){data=await importInBrowser({png,vector,json});data.heightmapFile=png;await load(data,label,keepId,opts);}
+ else{const form=new FormData();form.append('file',png);if(vector)form.append('vector',vector);if(json)form.append('metadata',json);
+  data=await request('/api/import',form);data.heightmapFile=png;await load(data,label,keepId,opts);}
+ if(!keepId)keepOnShelf(data.id||data.base,library.get(data.id||data.base)?.label||label,data,{png,groove:vector,json});
+ return data;
+}
+// A finished server cut: its files are fetched once and kept on the shelf.
+async function shelveServerCut(data,label){
+ const id=data.id||data.base,[png,groove,json]=await Promise.all(['heightmap.png','heightmap.groove.wav','heightmap.json'].map(f=>blobAt(data.base+f)));
+ await keepOnShelf(id,library.get(id)?.label||label,data,{png,groove,json});
+}
+// Take a record off the shelf for good (it stays on the platter if it is playing).
+async function forget(id){await shelf.del(id);if(id!==currentId){const e=library.get(id);if(e?.data?.previewUrl?.startsWith('blob:'))URL.revokeObjectURL(e.data.previewUrl);library.delete(id);}emitSleeves();}
+async function filesFor(id){const r=await shelf.get(id);return r?{png:r.png,groove:r.groove,json:r.json}:null;}
+function openFiles(list){return task(async()=>{await openParts(classify([...list]));});}
+// For the one-room page: open records and hand over finished cuts; each resolves to the record's data, or null if it failed (the error is shown).
+async function guarded(fn){let out=null;await task(async()=>{out=await fn();});return out;}
 $('open').onclick=()=>$('recordFile').click();
 $('recordFile').onchange=e=>{if(e.target.files.length)openFiles(e.target.files);e.target.value='';};
 const well=$('well');
@@ -278,7 +337,9 @@ window.vinyl={get record(){return record;},get state(){return state;},get down()
  get rpm(){return rpm;},setSpeed(v){if(!record)return;speed(v);},
  get sources(){return {vector:!!vectorBuffer,png:!!pngBuffer,both:!!(record&&vectorBuffer&&pngBuffer)};},
  get source(){return record?.playback_source||null;},setSource(mode){if(record&&vectorBuffer&&pngBuffer&&mode!==record.playback_source)applySource(mode==='vector'?'vector':'png');},
- swapTo,sleeves:sleeveList,get currentId(){return currentId;},get libraryCount(){return library.size;}
+ swapTo,sleeves:sleeveList,currentSleeve,get currentId(){return currentId;},
+ openFiles:(list,opts)=>guarded(()=>openParts(classify([...list]),undefined,undefined,opts)),openParts:(parts,label,opts)=>guarded(()=>openParts(parts,label,undefined,opts)),
+ loadCut:(data,label,opts)=>guarded(async()=>{await load(data,label,undefined,opts);shelveServerCut(data,label);return data;}),forget,filesFor,isShelved:id=>shelf.get(id).then(r=>!!r),say:(text,kind)=>status(text,kind),get busy(){return busy;},localApi,get libraryCount(){return library.size;}
 };
 setInterval(()=>{if(record){if(down&&!state.grabbed&&time()>=duration()){lift();}renderStatus();}},100);
 enableControls();
@@ -291,5 +352,6 @@ enableControls();
   if(!data.base)data.base='demo/';
   await load(data,data.label||'Original tune');
  }catch{}
+ try{await restoreShelf();}catch{}
 })();
 })();

@@ -1,5 +1,5 @@
 {
-  "project": "/workspace/vinyl-project",
+  "project": "vp",
   "run": "python3 serve.py --port 8765",
   "url": "http://127.0.0.1:8765/",
   "sample_metadata": {
@@ -21,8 +21,8 @@
     "height_scale_mm": 2.55,
     "audio_storage": "Explicit prepared-displacement vector master + PNG depth export; never the original upload.",
     "riaa": "none (custom reversible presence shelf, not RIAA)",
-    "max_duration_sec": 480,
-    "warning": "Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.",
+    "max_duration_sec": 270,
+    "warning": "Raster-limited lo-fi mono. Audio past 4:30 is left off. Not a physical stylus simulator.",
     "packing_mode": "outer-band-if-room-v1",
     "height_polarity": "inverted",
     "bandlimit_mode": "radius-following-v1",
@@ -47,8 +47,11 @@
       ],
       "coefficient_sample_rate": 16000
     },
+    "outside_value": 32768,
+    "outside_fill": "mid-grey",
     "bandlimit_hz": 3200.453040710104,
     "bandlimit_outer_hz": 4023.6874680684077,
+    "source_truncated": false,
     "vector_master": {
       "format": "pcm16-mono-displacement-v1",
       "sample_count": 186156,
@@ -102,11 +105,13 @@
     "vector_json_only_import_and_png_rebuild_exact": true,
     "vector_standard_polarity_rebuild": true,
     "mismatched_vector_rejected": true,
-    "preview_max_8bit": 26,
+    "preview_max_8bit": 205,
     "preview_import_rejected": true,
     "unknown_polarity_rejected": true,
     "stored_surface_16bit": 1285,
-    "stored_max_16bit": 12629,
+    "stored_max_16bit": 32768,
+    "stored_outside_16bit": 32768,
+    "stored_disc_max_16bit": 12629,
     "inverse_shelf_max_error": 3.1086244689504383e-15,
     "legacy_2048_quality": {
       "pearson": 0.9865685969360956,
@@ -114,101 +119,42 @@
       "alignment_lag_samples": 0,
       "gain": 1.1002751154725046
     },
-    "2048_4096_duration_packing": true
+    "2048_4096_duration_packing": true,
+    "cut_capped_at_4m30_and_flagged": true
   },
-  "verification_seconds": 16.552388537995284,
+  "verification_seconds": 20.214651774000004,
   "visual_fix": {
     "preview": "RingGeometry with label-radius hole; explicit black albedo 0x141416, roughness .42, metalness 0; dark texture used only for bump, not albedo.",
     "label": "Separate brown label at thickness + 0.3 mm with polygonOffset; no coplanar preview overlap.",
     "lights": "Hemisphere .45, key .85"
   },
   "browser_tested": false,
-  "browser_note": "Real pinned OrbitControls/camera/raycast and ring/label/material/light tests with mocked DOM/renderer; no real browser/WebGL rendering or listening audition. Dark preview PNG inspected separately.",
+  "browser_note": "Node mocked renderer/DOM tests exercise real pinned OrbitControls and Three.js camera math, including moved-camera raycast. JS syntax checked. No real browser, WebGL or listening audition; manual visual check remains.",
   "caveats": [
     "Vector avoids raster/grid loss but retains the existing adaptive preparation (~3.2\u20134 kHz on this sample). It cannot recover frequencies already filtered out. Still lo-fi mono.",
     "2x2 subpixel raster averaging reduces grid beating but cannot eliminate all alias/laser artifacts at 4096, especially tight long-track grooves.",
     "Custom presence shelf is not RIAA. Inverse shelf is exact digitally, but raster loss is not reversible.",
     "16-bit PNG stores physical surface heights in inverted visual polarity plus spiral/filter metadata, never hidden PCM/MP3.",
+    "Playback prefers the explicit prepared vector master; PNG-only imports trace 65-point radial centroids. Neither path uses the original upload.",
     "New exports use v2 because old v1 decoders silently ignored polarity; this decoder reads both v1 and v2.",
     "Pinned three.js/OrbitControls CDN needs internet; local Python processing and audio are local.",
-    "8 minutes maximum, 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features."
+    "4:30 maximum (longer audio is cut to its first 4:30; older records up to 8 min still open), 150 MB uploads; 2048 option has lower bandwidth and long recordings have subpixel features."
   ],
   "files": {
-    "sample.png": "/workspace/vinyl-project/output/sample.png",
-    "sample.json": "/workspace/vinyl-project/output/sample.json",
-    "sample.groove.wav": "/workspace/vinyl-project/output/sample.groove.wav",
-    "sample-decoded.wav": "/workspace/vinyl-project/output/sample-decoded.wav",
-    "sample-png-decoded.wav": "/workspace/vinyl-project/output/sample-png-decoded.wav",
-    "sample-bandlimited-reference.wav": "/workspace/vinyl-project/output/sample-bandlimited-reference.wav",
-    "sample-preview.png": "/workspace/vinyl-project/output/sample-preview.png",
-    "sample-playback.wav": "/workspace/vinyl-project/output/sample-playback.wav"
-  },
-  "three_minute_stress_test": {
-    "metadata": {
-      "encoding_version": "vinyl-heightmap-lateral-v2",
-      "rpm_cut": 33.3333333333,
-      "pitch_mm": 0.9915716410520493,
-      "r_start_mm": 146.0,
-      "disc_radius_mm": 150.0,
-      "label_radius_mm": 43.0,
-      "amp_mm": 0.1586514625683279,
-      "groove_width_mm": 0.49578582052602466,
-      "groove_depth_mm": 0.45,
-      "thickness_mm": 2.5,
-      "sample_rate": 16000,
-      "duration_sec": 180.0,
-      "lead_in_turns": 0.35,
-      "lead_out_turns": 0.5,
-      "image_size": 4096,
-      "height_scale_mm": 2.55,
-      "audio_storage": "Explicit prepared-displacement vector master + PNG depth export; never the original upload.",
-      "riaa": "none (custom reversible presence shelf, not RIAA)",
-      "max_duration_sec": 480,
-      "warning": "Raster-limited lo-fi mono. Files over 8 min are truncated. Not a physical stylus simulator.",
-      "packing_mode": "outer-band-if-room-v1",
-      "height_polarity": "inverted",
-      "bandlimit_mode": "radius-following-v1",
-      "bandlimit_cap_hz": 6500.0,
-      "filter_window_samples": 1024,
-      "filter_hop_samples": 256,
-      "raster_subsamples": 4,
-      "preemphasis": "presence-shelf-v1",
-      "presence_shelf": {
-        "frequency_hz": 1500.0,
-        "gain_db": 6.0,
-        "slope": 1.0,
-        "b": [
-          1.735191860875051,
-          -2.2749495535019215,
-          0.856813588517222
-        ],
-        "a": [
-          1.0,
-          -1.0610999090993012,
-          0.37815580498965284
-        ],
-        "coefficient_sample_rate": 16000
-      },
-      "bandlimit_hz": 974.7792665043963,
-      "bandlimit_outer_hz": 3053.5987979803253,
-      "vector_master": {
-        "format": "pcm16-mono-displacement-v1",
-        "sample_count": 2880000,
-        "sha256": "e3047fc915173657704540d0a01e5bd36e2934d1913ed302fbe62fec0229b930",
-        "meaning": "Prepared lateral displacement / amp_mm; adaptive-filtered, presence-emphasized, peak-normalized. Not the original upload."
-      }
-    },
-    "quality": {
-      "pearson": 0.9901550413354323,
-      "gain_aligned_snr_db": 17.078991918921844,
-      "alignment_lag_samples": 0,
-      "gain": 1.1237231825718892
-    },
-    "seconds": 13.684331450996979,
-    "source": "Original instrumental demo slowed 3x then tiled to 180 seconds; not a vocal benchmark.",
-    "playback_path_tested": "Explicit PNG-only raster regression; vector companion not used for this metric."
+    "sample.png": "output/sample.png",
+    "sample.json": "output/sample.json",
+    "sample.groove.wav": "output/sample.groove.wav",
+    "sample-decoded.wav": "output/sample-decoded.wav",
+    "sample-png-decoded.wav": "output/sample-png-decoded.wav",
+    "sample-bandlimited-reference.wav": "output/sample-bandlimited-reference.wav",
+    "sample-preview.png": "output/sample-preview.png",
+    "sample-playback.wav": "output/sample-playback.wav"
   },
   "http_verification": {
+    "cover_and_tags_from_mp3": true,
+    "chosen_cover_wins": true,
+    "foreign_host_refused": true,
+    "js_mime_pinned": true,
     "loopback_page": true,
     "three_pages": true,
     "png_only_http_import": true,
@@ -219,30 +165,5 @@
     "playback_wav_get": true,
     "upload_deleted": true,
     "server_stopped": true
-  },
-  "javascript_verification": {
-    "player": {
-      "passed": true,
-      "output": "PASS: explicit vector/PNG playback routing and vector needle buffer, drop/lift, seek, radial placement, 78/45 speed/pitch/time ratio. Mocked DOM/audio, not a browser test."
-    },
-    "camera_material_label": {
-      "passed": true,
-      "output": "PASS: real OrbitControls right-drag orbit, wheel/distance clamps, reset, left needle unchanged, raycast after moved camera, orbit does not lift playback; preview ring/label separation, dim lights. Mocked renderer/DOM, not WebGL."
-    },
-    "app_syntax": {
-      "passed": true,
-      "output": ""
-    },
-    "view_syntax": {
-      "passed": true
-    }
-  },
-  "bundle": {
-    "path": "/workspace/vinyl-project/vinyl-project.zip",
-    "excludes": [
-      "old HTTP sessions",
-      "long-test artifacts",
-      "caches"
-    ]
   }
 }

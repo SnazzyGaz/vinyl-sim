@@ -21,7 +21,7 @@ function getWorker(){
 function loadCore(){return core??=new Promise((resolve,reject)=>{if(window.VinylCore)return resolve(window.VinylCore);
  const s=document.createElement('script');s.src=new URL('vinyl-core.js',here).href;s.onload=()=>resolve(window.VinylCore);s.onerror=()=>reject(Error('Could not load the in-browser cutter.'));document.head.append(s);});}
 async function inline(msg,onStage){const C=await loadCore();
- if(msg.type==='encode'){let {samples,sampleRate}=msg;if(msg.wav){const w=C.wavToMono(msg.wav);samples=w.samples;sampleRate=w.sampleRate;}return C.encodeRecord(samples,sampleRate,Number(msg.size)||4096,onStage);}
+ if(msg.type==='encode'){let {samples,sampleRate}=msg;if(msg.wav){const w=C.wavToMono(msg.wav);samples=w.samples;sampleRate=w.sampleRate;}return C.encodeRecord(samples,sampleRate,Number(msg.size)||4096,onStage,msg.extras||null);}
  return C.importRecord(msg,onStage);}
 function run(msg,transfer,onStage){
  const w=getWorker();if(!w)return inline(msg,onStage);
@@ -36,18 +36,19 @@ function plainWav(buf){
   o+=8+size+(size&1);}
  return false;
 }
-// Anything the browser can decode (MP3, AAC, OGG, FLAC…): mono, resampled to 16 kHz by the browser, 480 s max.
+// Anything the browser can decode (MP3, AAC, OGG, FLAC…): mono, resampled to 16 kHz by the browser.
+// One second past the 4:30 limit is kept so the cutter can say the song was cut short.
 async function decode16k(buf){
  const Ctx=window.OfflineAudioContext||window.webkitOfflineAudioContext;
  let audio;try{audio=await new Ctx(1,1,16000).decodeAudioData(buf);}catch{throw Error('This browser could not read that audio file. Try a WAV or MP3.');}
- const n=Math.min(audio.length,480*16000),out=new Float32Array(n);
+ const n=Math.min(audio.length,(270+1)*16000),out=new Float32Array(n);
  for(let c=0;c<audio.numberOfChannels;c++){const d=audio.getChannelData(c);for(let i=0;i<n;i++)out[i]+=d[i]/audio.numberOfChannels;}
  return out;
 }
-async function cut(buf,size,onStage){
- if(plainWav(buf))return run({type:'encode',wav:buf,size},[],onStage);
+async function cut(buf,size,onStage,extras=null){
+ if(plainWav(buf))return run({type:'encode',wav:buf,size,extras},[],onStage);
  const samples=await decode16k(buf.slice(0));
- return run({type:'encode',samples,sampleRate:16000,size},[],onStage);
+ return run({type:'encode',samples,sampleRate:16000,size,extras},[],onStage);
 }
 async function open({png,vector,json},onStage){
  const msg={type:'import',png:await png.arrayBuffer()};
