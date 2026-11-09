@@ -1125,7 +1125,7 @@ function frame(){
  requestAnimationFrame(frame);
  const v=window.vinyl,r=v.record;let energy=0;
  const now=performance.now(),raw=Math.max(.001,(now-lastFrame)/1000),dt=Math.min(.25,raw);lastFrame=now;frameDt=dt; // animations follow wall-clock time even on slow frames
- if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active)disc.rotation.z=v.state.rotation;
+ if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active&&!dropIn)disc.rotation.z=v.state.rotation;
   let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
   const rad=m.r_start_mm-m.pitch_mm*th/(2*Math.PI)+m.amp_mm*d;
   const moving=inspect.active||dropIn||outgoing.children.length;
