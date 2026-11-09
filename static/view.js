@@ -956,7 +956,7 @@ function updateSwap(dt){
    }else if(d.extract){ // one continuous path: slide along the sleeve axis, then the usual flight in
     const EX=.38,flat=new THREE.Quaternion();
     if(k<=EX){const u=k/EX;disc.position.lerpVectors(d.extract.inside,d.extract.clear,u);disc.quaternion.copy(d.extract.q);}
-    else{const u=(k-EX)/(1-EX);inspectPath(1-u,disc.position,d.extract.clear);disc.quaternion.slerpQuaternions(d.extract.q,flat,smooth(.3,.85,u));}
+    else{const u=(k-EX)/(1-EX);inspectPath(1-u,disc.position,d.extract.clear);disc.quaternion.slerpQuaternions(d.extract.q,flat,smooth(0,.45,u));}
    }else{inspectPath(1-k,disc.position,d.from);disc.rotation.x=d.tilt*(1-smooth(0,.45,k));}
    if(t>=1){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;if(d.lathe&&bench.blank){bench.blank.visible=true;}break;}
   }busy=true;}
