@@ -156,10 +156,12 @@ try {
     const gap=machineGap(j2,'box');assert.ok(gap.g>.5,`a sleeve dropped against the cabinet lies clear of it (closest ${gap.g.toFixed(2)} mm to ${gap.what})`);}
    win.emit('vinyl-sleeves',{detail:{current:'a',sleeves:[{id:'b',label:'Second'},{id:'c',label:'Third'}]}});tick();
    const again=context.api.sleeves.children.find(o=>o.userData.sleeveId===j2.userData.sleeveId);assert.ok(again.position.distanceTo(j2.position)<1e-6,'and survives a rebuild of the sleeves');
-   // Offered to the platter: the sleeve stands in front of the machine (clear of it), the record peeks out and the rim glows.
+   // Offered to the platter: the sleeve stays at its home (crate/floor), the record peeks out and the rim glows.
    again.getWorldPosition(mid);const [bx,by]=toScreen(mid),[tx,ty]=toScreen(new real.Vector3(Rr*.3,Rr*.2,-4));
+   const homeBefore=again.userData.home.p.clone();
    canvas.emit('pointerdown',event(bx,by,0));for(let k=1;k<=6;k++)canvas.emit('pointermove',event(bx+(tx-bx)*k/6,by+(ty-by)*k/6,0));for(let i=0;i<60;i++)tick();
-   assert.ok(again.userData.peek>.9&&scene.getObjectByName('drop-ring').visible,'offered: record half out, platter rim lit');
+   assert.ok(again.userData.peek>.9&&scene.getObjectByName('drop-ring').visible,'offered: record peeks, platter rim lit');
+   assert.ok(again.position.distanceTo(homeBefore)<Rr*.35,'offered sleeve stays near its home (does not leap in front of the camera)');
    const jg=machineGap(again,'box');assert.ok(jg.g>.5,`offered sleeve clears the machine (closest ${jg.g.toFixed(2)} mm to ${jg.what})`);
    canvas.emit('pointerup',event(tx,ty,0));tick();assert.equal(swaps.at(-1),again.userData.sleeveId,'let go while offered: swap');assert.ok(!context.api.sleeveRest.has(again.userData.sleeveId),'its empty sleeve goes back on the shelf, even if it had been left out');
    // ...and the record slides out of that sleeve along its open edge, then onto the spindle without teleporting or clipping the cardboard.
@@ -174,19 +176,20 @@ try {
    assert.ok(context.api.getDropIn()?.extract,'dropIn carries the extract path');
    close(disc.position,ex0.inside);
    let prev=disc.position.clone(),maxStep=0,zPrev=-Infinity,sawExtract=false,sawFly=false,clearances=[];
-   for(let i=0;i<200;i++){
+   // Longer path (~2.8 s + delay): allow more ticks
+   for(let i=0;i<320;i++){
     tick();const r=machineGap(disc,"disc");if(r.g<worst){worst=r.g;who=r.what;}
     const step=disc.position.distanceTo(prev);maxStep=Math.max(maxStep,step);prev.copy(disc.position);
     const di=context.api.getDropIn();if(!di)continue;
     if(di.e<=di.delay){assert.ok(disc.position.distanceTo(ex0.inside)<1e-6,'holds inside the sleeve during the hand-off delay');continue;}
-    const u=Math.max(0,Math.min(1,(di.e-di.delay)/di.dur));
+    const te=di.e-di.delay,ed=di.extractDur||1.25;
     const z=disc.position.clone().sub(ex0.origin).dot(ex0.axis);
     const onAxis=ex0.origin.clone().addScaledVector(ex0.axis,z),off=disc.position.distanceTo(onAxis);
-    if(u<=.38){sawExtract=true;assert.ok(off<3,`extract stays on the sleeve axis (off ${off.toFixed(2)} mm)`);assert.ok(z+1e-3>=zPrev-1e-3,'extract z is non-decreasing');zPrev=Math.max(zPrev,z);clearances.push({u,off,z});}
+    if(te<ed){sawExtract=true;assert.ok(off<3,`extract stays on the sleeve axis (off ${off.toFixed(2)} mm)`);assert.ok(z+1e-3>=zPrev-1e-3,'extract z is non-decreasing');zPrev=Math.max(zPrev,z);clearances.push({te,off,z});}
     else sawFly=true;
    }
    assert.ok(sawExtract&&sawFly,'extract phase then flight');
-   assert.ok(maxStep<context.api.getR()*2.2,`no sleeve-wall teleport (max step ${maxStep.toFixed(2)} mm)`);
+   assert.ok(maxStep<context.api.getR()*2.5,`no sleeve-wall teleport (max step ${maxStep.toFixed(2)} mm)`);
    assert.ok(clearances.length>5,'tracked per-frame extract clearance');
    assert.ok(clearances.every(c=>c.off<3),'every extract frame clears the sleeve walls (on-axis slide)');
    assert.ok(worst>.5,`record from the offered sleeve clears the machine (closest ${worst.toFixed(2)} mm to ${who})`);

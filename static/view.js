@@ -471,14 +471,24 @@ function captureExtract(jacket){
  // Platter disc faces +Z; peek record faces along jacket ±Y. Map disc +Z → jacket +Y.
  const qDisc=q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2));
  const curZ=(jacket.userData.peekObj&&jacket.userData.peek>.01)?jacket.userData.peekObj.position.z:S*.5;
- const clearZ=S+R*1.05,insideZ=Math.min(curZ,clearZ-.5);
+ const clearZ=S+R*1.08,insideZ=Math.min(curZ,clearZ-.5);
  const at=z=>origin.clone().addScaledVector(axis,z);
- return {inside:at(insideZ),clear:at(clearZ),q:qDisc,axis:axis.clone(),origin:origin.clone(),S,sleeveId:jacket.userData.sleeveId};
+ const inside=at(insideZ),clear=at(clearZ);
+ return {inside,clear,q:qDisc,axis:axis.clone(),origin:origin.clone(),S,sleeveId:jacket.userData.sleeveId,extractDur:1.25,flightDur:1.55};
 }
 function armSwapFromSleeve(jacketOrId,tilt=Math.PI/2-.15){
  const j=typeof jacketOrId==='object'&&jacketOrId?.isObject3D?jacketOrId:sleeves.children.find(o=>o.userData.sleeveId===jacketOrId);
  if(!j||j.userData.empty){pendingExtract=null;pendingSwapFrom=null;pendingSwapTilt=0;return false;}
+ // Extract from where the sleeve lives (crate / floor rest), never from a face-on presentPose.
+ const home=j.userData.home;if(home){j.position.copy(home.p);j.quaternion.copy(home.q);j.updateMatrixWorld(true);}
  pendingExtract=captureExtract(j);pendingSwapFrom=pendingExtract.clear.clone();pendingSwapTilt=tilt;return true;
+}
+/* Soft floor on how close the moving disc may get to the camera (keeps it from filling the frame). */
+function keepDiscAwayFromCamera(pos){
+ const cam=camera.position,platter=controls.target,D=Math.max(R*3.5,cam.distanceTo(platter)*.72);
+ const offset=pos.clone().sub(cam),d=offset.length();
+ if(d>1e-4&&d<D)pos.copy(cam).addScaledVector(offset.multiplyScalar(1/d),D);
+ return pos;
 }
 /* Sleeves stay where they are put. sleeveRest: id -> {p,q} for a sleeve left lying on
    the floor; an id with no entry stands in the record crate (the shelf). The playing record's own
@@ -914,8 +924,10 @@ function mountRecord(record){
  const lathe=pendingFromLathe;pendingFromLathe=false;
  if(lathe&&bench.blank){bench.blank.visible=false;bench.state='idle';bench.target=0;bench.shown=0;setBlankGroove(0);}
  if(!reduce()){
-  const dur=lathe?1.25:(extract?1.35:.95);
-  dropIn={e:0,dur,delay:hadRecord?.45:(lathe?.35:0),from,tilt,lathe,extract};
+  if(extract&&!extract.flight)extract.flight=buildIncomingFlight(extract.clear);
+  const extractDur=extract?extract.extractDur:0,flightDur=extract?extract.flightDur:0;
+  const dur=lathe?1.25:(extract?extractDur+flightDur:.95);
+  dropIn={e:0,dur,delay:hadRecord?.35:(lathe?.35:0),from,tilt,lathe,extract,extractDur,flightDur};
   if(lathe){disc.position.copy(from);disc.rotation.x=0;}
   else if(extract){disc.position.copy(extract.inside);disc.quaternion.copy(extract.q);}
   else{inspectPath(1,disc.position,from);disc.rotation.x=tilt;}
@@ -936,6 +948,14 @@ function routeTo(dest){
  pts.push(new THREE.Vector3(dest.x,dest.y,Math.max(dest.z+R*1.15,tableZ+R*.9)),dest);
  return new THREE.CatmullRomCurve3(pts,false,'centripetal');
 }
+/* Clear → around the cabinet (reverse of routeTo) → under the horn (inspectPath) → spindle. */
+function buildIncomingFlight(clear){
+ const toFront=routeTo(clear).getPoints(14).reverse(); // clear … FRONT
+ const pts=toFront.map(p=>p.clone());
+ const front=FRONT(),tmp=new THREE.Vector3();
+ for(let i=9;i>=0;i--){inspectPath(i/10,tmp,front);pts.push(tmp.clone());}
+ return new THREE.CatmullRomCurve3(pts,false,'centripetal');
+}
 function outgoingPath(u,out,route){
  if(u<=.5)return inspectPath(u/.5,out,FRONT());
  return out.copy(route.getPointAt((u-.5)/.5));
@@ -949,16 +969,23 @@ function updateSwap(dt){
  if(dropIn&&!inspect.active){const d=dropIn;
   // Sub-step so a slow frame cannot skip across the extract→flight join and teleport.
   let left=dt;while(left>0){const step=Math.min(left,1/30);left-=step;d.e+=step;
-   const t=Math.max(0,Math.min(1,(d.e-d.delay)/d.dur)),k=easeInOut(t);
    if(d.e<=d.delay){if(d.extract){disc.position.copy(d.extract.inside);disc.quaternion.copy(d.extract.q);}continue;}
-   if(d.lathe){const up=d.from.clone();up.z+=R*.55;
+   const te=d.e-d.delay;
+   if(d.lathe){const t=Math.max(0,Math.min(1,te/d.dur)),k=easeInOut(t);const up=d.from.clone();up.z+=R*.55;
     if(k<.22)disc.position.copy(d.from).setZ(d.from.z+R*.55*smooth(0,1,k/.22));else inspectPath(1-(k-.22)/.78,disc.position,up);
-   }else if(d.extract){ // one continuous path: slide along the sleeve axis, then the usual flight in
-    const EX=.38,flat=new THREE.Quaternion();
-    if(k<=EX){const u=k/EX;disc.position.lerpVectors(d.extract.inside,d.extract.clear,u);disc.quaternion.copy(d.extract.q);}
-    else{const u=(k-EX)/(1-EX);inspectPath(1-u,disc.position,d.extract.clear);disc.quaternion.slerpQuaternions(d.extract.q,flat,smooth(0,.45,u));}
-   }else{inspectPath(1-k,disc.position,d.from);disc.rotation.x=d.tilt*(1-smooth(0,.45,k));}
-   if(t>=1){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;if(d.lathe&&bench.blank){bench.blank.visible=true;}break;}
+    if(t>=1){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;if(bench.blank)bench.blank.visible=true;break;}
+   }else if(d.extract){ // slide out of the sleeve (~1.25 s), then a gentle arc onto the platter (~1.55 s)
+    const ed=d.extractDur||1.25,fd=d.flightDur||1.55,flat=new THREE.Quaternion();
+    if(te<ed){const u=easeInOut(te/ed);disc.position.lerpVectors(d.extract.inside,d.extract.clear,u);disc.quaternion.copy(d.extract.q);}
+    else{const u=easeInOut(Math.min(1,(te-ed)/fd));
+     if(d.extract.flight)d.extract.flight.getPoint(u,disc.position);else inspectPath(1-u,disc.position,d.extract.clear);
+     keepDiscAwayFromCamera(disc.position);
+     disc.quaternion.slerpQuaternions(d.extract.q,flat,smooth(0,.5,u));}
+    if(te>=ed+fd){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;break;}
+   }else{const t=Math.max(0,Math.min(1,te/d.dur)),k=easeInOut(t);
+    inspectPath(1-k,disc.position,d.from);disc.rotation.x=d.tilt*(1-smooth(0,.45,k));
+    if(t>=1){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;break;}
+   }
   }busy=true;}
  return busy;
 }
@@ -1000,8 +1027,9 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 });
 /* Carrying a sleeve: it hangs under the pointer, upright and turned to face you, and
    goes anywhere in the room. Over the cabinet top it is offered to the platter
-   instead: it stands at the front of the machine, the record slides half out and the
-   platter rim glows. Let go there to play it; anywhere else it is put down flat. */
+   instead: the sleeve eases back to its home (crate), the record peeks, and the
+   platter rim glows. Let go there to play it — the disc slides out of the sleeve
+   and arcs onto the spindle. Anywhere else the sleeve is put down flat. */
 function hint(text){if(typeof CustomEvent==='function')window.dispatchEvent?.(new CustomEvent('vinyl-hint',{detail:{text}}));}
 function setCursor(c){if(renderer.domElement.style)renderer.domElement.style.cursor=c;}
 const ROOM_X=1080,ROOM_Y0=-1080,ROOM_Y1=420;
@@ -1009,8 +1037,10 @@ function moveSleeve(e){
  const s=sleeveDrag,S=2*R*1.04;if(!s.moved&&Math.hypot(e.clientX-s.x0,e.clientY-s.y0)<6)return;s.moved=true;
  const top=hitPlane(e,LID_Z),over=!!top&&Math.abs(top.x)<cabW+R*.12&&Math.abs(top.y)<cabD+R*.12;
  const wasArmed=s.armed;s.armed=over&&!s.empty;
- if(s.armed){s.pose=presentPose();}
- else{
+ if(s.armed){
+  // Stay home (crate / where it was put). The disc slides out of here — the sleeve does not leap into the viewer's face.
+  const home=s.jacket.userData.home;s.pose=home?{p:home.p.clone(),q:home.q.clone()}:presentPose();
+ }else{
   const c=hitPlane(e,tableZ+S*.62);if(!c)return;
   c.x=Math.max(-ROOM_X,Math.min(ROOM_X,c.x));c.y=Math.max(ROOM_Y0,Math.min(ROOM_Y1,c.y));
   // never inside the cabinet: push out to the nearest side of a margin round it
@@ -1020,7 +1050,7 @@ function moveSleeve(e){
   s.pose={p:c.clone().sub(new THREE.Vector3(0,0,S/2).applyQuaternion(q)),q};s.c=c;s.yaw=yaw;
   const rack=crateCenter();s.rack=Math.hypot(c.x-rack.x,c.y-rack.y)<S*.75;
  }
- if(s.armed!==wasArmed)hint(s.armed?'Let go to put this record on.':'');
+ if(s.armed!==wasArmed)hint(s.armed?'Let go — it will slide out of its sleeve onto the platter.':'');
  setCursor(s.armed?'copy':'grabbing');invalidate();
 }
 renderer.domElement.addEventListener('pointermove',e=>{
@@ -1093,7 +1123,7 @@ function syncQualityUI(s=post.state()){if(!qualitySelect)return;qualitySelect.va
 qualitySelect?.addEventListener('change',()=>post.setMode(qualitySelect.value));syncQualityUI();
 // Screen positions of things, for automated checks (and handy in the console).
 function toClient(v){const b=renderer.domElement.getBoundingClientRect(),n=v.clone().project(camera);return {x:b.left+(n.x+1)/2*b.width,y:b.top+(1-n.y)/2*b.height};}
-window.vinylView={toClient:(x,y,z)=>toClient(new THREE.Vector3(x,y,z)),sleevePoints:()=>sleeves.children.filter(j=>j.userData.sleeveId!=null).map(j=>({id:j.userData.sleeveId,empty:!!j.userData.empty,...toClient(jacketCenter({p:j.position,q:j.quaternion}))})),get R(){return R;},get tableZ(){return tableZ;},invalidate,setQuality:m=>post.setMode(m),get quality(){return post.state();},get hoverId(){return hoverId;},get lathe(){return bench?{state:bench.state,shown:bench.shown,target:bench.target}:null;},get info(){const i=renderer.info;return {calls:i.render.calls,triangles:i.render.triangles,geometries:i.memory.geometries,textures:i.memory.textures,programs:i.programs?.length};},keepInRoom,keepBelowCeiling,armSwapFromSleeve,captureExtract,roomBounds,presentPose};
+window.vinylView={toClient:(x,y,z)=>toClient(new THREE.Vector3(x,y,z)),sleevePoints:()=>sleeves.children.filter(j=>j.userData.sleeveId!=null).map(j=>({id:j.userData.sleeveId,empty:!!j.userData.empty,...toClient(jacketCenter({p:j.position,q:j.quaternion}))})),get R(){return R;},get tableZ(){return tableZ;},invalidate,setQuality:m=>post.setMode(m),get quality(){return post.state();},get hoverId(){return hoverId;},get lathe(){return bench?{state:bench.state,shown:bench.shown,target:bench.target}:null;},get info(){const i=renderer.info;return {calls:i.render.calls,triangles:i.render.triangles,geometries:i.memory.geometries,textures:i.memory.textures,programs:i.programs?.length};},keepInRoom,keepBelowCeiling,armSwapFromSleeve,captureExtract,keepDiscAwayFromCamera,roomBounds,presentPose};
 document.addEventListener?.('visibilitychange',()=>invalidate(2));
 
 // The demo may finish loading while Three.js/room modules are still downloading.
