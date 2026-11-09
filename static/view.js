@@ -1054,7 +1054,7 @@ function shadowSignature(){
 }
 function updateShadows(now){
  const sig=shadowSignature();
- if(Math.abs(sig-shadowSig)>1e-6)shadowPending=true;
+ if(!(Math.abs(sig-shadowSig)<=1e-6))shadowPending=true; // written so the first NaN compare counts as a change: otherwise the shadow map froze after its first render
  if(shadowPending&&now-shadowAt>33){renderer.shadowMap.needsUpdate=true;shadowSig=sig;shadowAt=now;shadowPending=false;}
  else if(shadowPending)invalidate(1);
 }

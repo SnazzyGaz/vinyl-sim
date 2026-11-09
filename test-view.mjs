@@ -217,7 +217,10 @@ try {
    assert.ok(worst>.5,`swap clears the machine (closest ${worst.toFixed(2)} mm to ${hitName})`);assert.ok(camera.position.distanceTo(still)<1e-9,'swap keeps the view');
    // Draw on demand: an idle, needle-up scene stops drawing.
    vinyl.down=false;for(let i=0;i<120;i++)tick();const d0=draws;for(let i=0;i<60;i++)tick();assert.equal(draws,d0,'idle scene draws nothing');
+   // Shadows: a still scene never re-renders its shadow map; a change does (it used to freeze after the first render).
+   renderer.shadowMap.needsUpdate=false;for(let i=0;i<30;i++)tick();assert.equal(renderer.shadowMap.needsUpdate,false,'still scene: shadow map left alone');
    canvas.emit('pointerdown',event(400,300,2));canvas.emit('pointermove',event(430,300,2));canvas.emit('pointerup',event(430,300,2));tick();assert.ok(draws>d0,'any movement draws again');
+   win.emit('vinyl-record',{detail:{...vinyl.record,id:'shadow-test',label:'Shadow test'}});for(let i=0;i<5;i++)tick();assert.equal(renderer.shadowMap.needsUpdate,true,'a moving record re-renders the shadow map');
   }
   // Curved print uses individual tangent glyphs, never a stretched horizontal title.
   {const glyphs=[],angles=[],positions=[];const pen={fillRect(){},beginPath(){},arc(){},stroke(){},measureText(t){return {width:t.length*35};},save(){},restore(){},translate(x,y){positions.push([x,y]);},rotate(a){angles.push(a);},fillText(t){glyphs.push(t);}};
