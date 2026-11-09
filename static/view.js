@@ -705,10 +705,10 @@ function beginInspection(){
  // App hold stays close; film hold sits a touch further so the disc doesn't punch into lens.
  const film=typeof FILM!=='undefined'&&FILM;
  inspect.held=film
-  ? new THREE.Vector3(-R*.28,-R*2.15,R*1.45)
+  ? new THREE.Vector3(-R*.18,-R*2.2,R*1.4)
   : new THREE.Vector3(-R*.35,-R*2.8,R*1.6);
  inspect.eye=inspect.held.clone().add(film
-  ? new THREE.Vector3(R*.55,-R*3.6,R*1.55)
+  ? new THREE.Vector3(R*.35,-R*3.7,R*1.65).multiplyScalar(1/Math.sqrt(1.11))
   : new THREE.Vector3(R*.15,-R*2.9,R*1.7));
  inspect.qHeld=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),inspect.eye.clone().sub(inspect.held).normalize());
  inspect.qHeld.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),.48));
