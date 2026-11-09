@@ -33,7 +33,7 @@ try {
   const context={THREE,OrbitControls,buildParlor,createLook,disposeTree,createPost,RoomEnvironment,clearTimeout,setTimeout,document:{getElementById:id=>({view,resetView:reset,inspectRecord:inspectButton,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
   vm.createContext(context);
   const source=(await fs.readFile(new URL('./static/view.js',import.meta.url),'utf8')).replace(/^import .*;$/mg,'').replaceAll('import.meta.url',JSON.stringify(new URL('./static/view.js',import.meta.url).href));
-  vm.runInContext(source+'\nglobalThis.api={sleeveRest,jacketCenter,floorPose,getTableZ:()=>tableZ,camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R,inspect,beginInspection,returnRecord,labelPrint};',context);
+  vm.runInContext(source+'\nglobalThis.api={sleeveRest,jacketCenter,floorPose,getTableZ:()=>tableZ,camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R,inspect,beginInspection,returnRecord,labelPrint,keepInRoom,roomBounds,armSwapFromSleeve,captureExtract,getDropIn:()=>dropIn,getPendingExtract:()=>pendingExtract};',context);
   const {camera,controls,renderer,disc,scene}=context.api,canvas=renderer.domElement;
   // Empty platter before any record; dark parlour behind the machine.
   assert.equal(scene.background.getHex(),0x1b1611);assert.ok(disc.getObjectByName('placeholder-disc'));
@@ -115,6 +115,14 @@ try {
     assert.ok(pol>=controls.minPolarAngle-1e-6&&pol<=controls.maxPolarAngle+1e-6,'polar clamped');
     assert.ok(camera.position.y<controls.target.y,'camera stays in front of the machine');}
    assert.equal(controls.enablePan,false);reset.emit('click');for(let i=0;i<80;i++)tick();}
+  // Room walls: a camera pushed past a wall is eased back inside with a near-plane margin.
+  {const b=context.api.roomBounds();camera.position.set(b.x+120,b.y0-80,b.z1+60);controls.target.set(0,0,40);camera.lookAt(controls.target);
+   let hit=false;for(let i=0;i<40;i++){if(context.api.keepInRoom())hit=true;}
+   assert.ok(hit,'keepInRoom engages when the camera is outside');
+   assert.ok(camera.position.x<=b.x+1e-6&&camera.position.x>=-b.x-1e-6,'inside left/right walls');
+   assert.ok(camera.position.y>=b.y0-1e-6&&camera.position.y<=b.y1+1e-6,'inside front/back walls');
+   assert.ok(camera.position.z<=b.z1+1e-6,'under the ceiling');
+   reset.emit('click');for(let i=0;i<80;i++)tick();}
   scene.updateMatrixWorld(true);
   const toScreen=v3=>{const n=v3.clone().project(camera);return [(n.x+1)*400,(1-n.y)*300];};
   const tapObj=(o,dx=0,dy=0)=>{const w=new real.Vector3();o.getWorldPosition(w);const [x,y]=toScreen(w);canvas.emit('pointerdown',event(x,y,0));canvas.emit('pointermove',event(x+dx,y+dy,0));canvas.emit('pointerup',event(x+dx,y+dy,0));tick();};
@@ -154,10 +162,35 @@ try {
    assert.ok(again.userData.peek>.9&&scene.getObjectByName('drop-ring').visible,'offered: record half out, platter rim lit');
    const jg=machineGap(again,'box');assert.ok(jg.g>.5,`offered sleeve clears the machine (closest ${jg.g.toFixed(2)} mm to ${jg.what})`);
    canvas.emit('pointerup',event(tx,ty,0));tick();assert.equal(swaps.at(-1),again.userData.sleeveId,'let go while offered: swap');assert.ok(!context.api.sleeveRest.has(again.userData.sleeveId),'its empty sleeve goes back on the shelf, even if it had been left out');
-   // ...and the record comes out of that sleeve, tilted, onto the spindle without touching the machine.
-   let worst=Infinity,who='';vinyl.down=false; /* the real swapTo lifts the needle first */win.emit('vinyl-record',{detail:{...vinyl.record,id:'swap-test',label:'From the sleeve'}});
-   for(let i=0;i<110;i++){tick();const r=machineGap(disc,"disc");if(r.g<worst){worst=r.g;who=r.what;}}
-   assert.ok(worst>.5,`record from the offered sleeve clears the machine (closest ${worst.toFixed(2)} mm to ${who})`);close(disc.position,new real.Vector3());assert.ok(Math.abs(disc.rotation.x)<1e-9,'and lands flat');}
+   // ...and the record slides out of that sleeve along its open edge, then onto the spindle without teleporting or clipping the cardboard.
+   let worst=Infinity,who='';vinyl.down=false; /* the real swapTo lifts the needle first */
+   const armed=context.api.getPendingExtract();assert.ok(armed,'swap armed an extract path from the sleeve');
+   const ex0={inside:armed.inside.clone(),clear:armed.clear.clone(),origin:armed.origin.clone(),axis:armed.axis.clone().normalize(),S:armed.S};
+   // Path continuity: dense samples along the extract segment stay on the axis and never jump.
+   {let prev=ex0.inside.clone(),maxEdge=0;for(let i=1;i<=40;i++){const u=i/40,p=ex0.inside.clone().lerp(ex0.clear,u);const edge=p.distanceTo(prev);maxEdge=Math.max(maxEdge,edge);prev.copy(p);
+     const z=p.clone().sub(ex0.origin).dot(ex0.axis),on=ex0.origin.clone().addScaledVector(ex0.axis,z);assert.ok(p.distanceTo(on)<1e-6,'extract samples lie on the sleeve axis');}
+    assert.ok(maxEdge<ex0.inside.distanceTo(ex0.clear)/39*1.01+1e-6,'extract samples are evenly spaced');}
+   win.emit('vinyl-record',{detail:{...vinyl.record,id:'swap-test',label:'From the sleeve'}});
+   assert.ok(context.api.getDropIn()?.extract,'dropIn carries the extract path');
+   close(disc.position,ex0.inside);
+   let prev=disc.position.clone(),maxStep=0,zPrev=-Infinity,sawExtract=false,sawFly=false,clearances=[];
+   for(let i=0;i<200;i++){
+    tick();const r=machineGap(disc,"disc");if(r.g<worst){worst=r.g;who=r.what;}
+    const step=disc.position.distanceTo(prev);maxStep=Math.max(maxStep,step);prev.copy(disc.position);
+    const di=context.api.getDropIn();if(!di)continue;
+    if(di.e<=di.delay){assert.ok(disc.position.distanceTo(ex0.inside)<1e-6,'holds inside the sleeve during the hand-off delay');continue;}
+    const u=Math.max(0,Math.min(1,(di.e-di.delay)/di.dur));
+    const z=disc.position.clone().sub(ex0.origin).dot(ex0.axis);
+    const onAxis=ex0.origin.clone().addScaledVector(ex0.axis,z),off=disc.position.distanceTo(onAxis);
+    if(u<=.38){sawExtract=true;assert.ok(off<3,`extract stays on the sleeve axis (off ${off.toFixed(2)} mm)`);assert.ok(z+1e-3>=zPrev-1e-3,'extract z is non-decreasing');zPrev=Math.max(zPrev,z);clearances.push({u,off,z});}
+    else sawFly=true;
+   }
+   assert.ok(sawExtract&&sawFly,'extract phase then flight');
+   assert.ok(maxStep<context.api.getR()*2.2,`no sleeve-wall teleport (max step ${maxStep.toFixed(2)} mm)`);
+   assert.ok(clearances.length>5,'tracked per-frame extract clearance');
+   assert.ok(clearances.every(c=>c.off<3),'every extract frame clears the sleeve walls (on-axis slide)');
+   assert.ok(worst>.5,`record from the offered sleeve clears the machine (closest ${worst.toFixed(2)} mm to ${who})`);
+   close(disc.position,new real.Vector3());assert.ok(Math.abs(disc.rotation.x)<1e-9,'and lands flat');}
   assert.equal(lifts,0);assert.equal(swaps.length,2);
   // Tonearm is the needle switch: a click on the reproducer lifts a playing needle; another drops it.
   {vinyl.down=true;const tipObj=context.api.armParts[4];tick();scene.updateMatrixWorld(true);const pl=placements.length;tapObj(tipObj);assert.equal(lifts,1,'arm click lifts');assert.equal(vinyl.down,false);
@@ -272,5 +305,5 @@ try {
      for(const o of fobs){l.copy(o.v).applyMatrix4(inv);const r=Math.hypot(l.x,l.y);if(r<3.7||r>Rr+.5)continue;const gg=l.z<0?-l.z:l.z>2.5?l.z-2.5:-1;if(gg<fw){fw=gg;fwho=o.name;}}}
     assert.equal(og.children.length,0,'filed away');assert.ok(fw>.5,`lathe to crate clears the machine and the bench (closest ${fw.toFixed(2)} mm to ${fwho})`);
     assert.equal(b.blank.visible,true,'a fresh blank is back on the lathe');assert.equal(rc.room.disc.children.length,onPlatter,'the record on the platter is untouched');}}
-  console.log('PASS: room mode: bench and lathe built in view, the head cuts in, a fresh cut travels lathe to platter (or is filed lathe to crate) clear of everything; sleeves put down anywhere stay put (flat, cover up, across rebuilds); an offered sleeve stands clear of the machine with the record peeking and the rim lit; records never pass through the horn, arm, spindle or hula girl when lifted out, put back, swapped or first loaded; persistent camera across mount/swap/inspection with eased reset; outgoing record glides off and is freed; draw-on-demand idles; early-demo/module race caught; curved title tangent glyphs; inspection pickup/rotation/Escape/reload interlock, solid PVC, room/shadows/neutral tone mapping; horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, window light and finished room, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
+  console.log('PASS: room mode: bench and lathe built in view, the head cuts in, a fresh cut travels lathe to platter (or is filed lathe to crate) clear of everything; sleeves put down anywhere stay put (flat, cover up, across rebuilds); an offered sleeve stands clear of the machine with the record peeking and the rim lit; records never pass through the horn, arm, spindle or hula girl when lifted out, put back, swapped or first loaded; persistent camera across mount/swap/inspection with eased reset; outgoing record glides off and is freed; draw-on-demand idles; early-demo/module race caught; curved title tangent glyphs; inspection pickup/rotation/Escape/reload interlock, solid PVC, room/shadows/neutral tone mapping; horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, room-wall/ceiling soft clamp, sleeve slide-out extract, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, window light and finished room, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

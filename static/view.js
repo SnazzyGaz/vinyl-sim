@@ -61,17 +61,39 @@ function updateCamTween(dt){
  return true;
 }
 /* The room is a fixed size but the camera scales with the record (R=150 for long
-   songs), so a zoomed-out orbit could rise through the ceiling. Keep the viewer's
-   distance and swing; only lower the camera's elevation until it is under the ceiling. */
-const CEILING_GAP=40;const ceilOff=new V3();
-function keepBelowCeiling(){
- const top=room.position.z+(room.userData.ceilingZ??880)-CEILING_GAP,t=controls.target,c=camera.position;
- if(c.z<=top+1e-3)return false;
- ceilOff.copy(c).sub(t);const d=ceilOff.length(),oz=Math.max(-d,Math.min(d,top-t.z)),hz=Math.hypot(ceilOff.x,ceilOff.y),h=Math.sqrt(Math.max(0,d*d-oz*oz));
- if(hz>1e-6)c.set(t.x+ceilOff.x/hz*h,t.y+ceilOff.y/hz*h,t.z+oz);else c.z=top;
- const sd=controls._sphericalDelta;if(sd&&sd.phi<0)sd.phi=0; // drop leftover upward momentum so the camera settles
+   songs), so a zoomed-out orbit could rise through the ceiling or back through a
+   wall. Keep the viewer inside every face, with a margin so the near plane never
+   shows plaster. Soft-blend so the clamp eases rather than snaps. */
+const ROOM_GAP=50,CEILING_GAP=40;const roomOff=new V3(),roomSafe=new V3();
+// Inner faces of the parlor (room.js): walls centred at x=±1200 / y=-1200 / y=540,
+// each 18 mm thick, ceiling underside at room-local z=ceilingZ, floor at z=0.
+function roomBounds(){
+ const z0=room.position.z,H=room.userData.ceilingZ??880;
+ return {x:1200-9-ROOM_GAP,y0:-1200+9+ROOM_GAP,y1:540-9-ROOM_GAP,z0:z0+ROOM_GAP*.4,z1:z0+H-CEILING_GAP};
+}
+function keepInRoom(){
+ const b=roomBounds(),t=controls.target,c=camera.position;
+ let hit=false;
+ roomSafe.copy(c);
+ if(roomSafe.x<-b.x){roomSafe.x=-b.x;hit=true;}else if(roomSafe.x>b.x){roomSafe.x=b.x;hit=true;}
+ if(roomSafe.y<b.y0){roomSafe.y=b.y0;hit=true;}else if(roomSafe.y>b.y1){roomSafe.y=b.y1;hit=true;}
+ if(roomSafe.z<b.z0){roomSafe.z=b.z0;hit=true;}
+ // Ceiling: preserve look distance and swing, only drop elevation (same idea as before).
+ if(c.z>b.z1+1e-3){
+  roomOff.copy(c).sub(t);const d=roomOff.length(),oz=Math.max(-d,Math.min(d,b.z1-t.z)),hz=Math.hypot(roomOff.x,roomOff.y),h=Math.sqrt(Math.max(0,d*d-oz*oz));
+  if(hz>1e-6)roomSafe.set(t.x+roomOff.x/hz*h,t.y+roomOff.y/hz*h,t.z+oz);else roomSafe.z=b.z1;
+  // re-apply wall limits after the ceiling swing
+  roomSafe.x=Math.max(-b.x,Math.min(b.x,roomSafe.x));roomSafe.y=Math.max(b.y0,Math.min(b.y1,roomSafe.y));
+  hit=true;const sd=controls._sphericalDelta;if(sd&&sd.phi<0)sd.phi=0;
+ }
+ if(!hit)return false;
+ // Soft blend toward the safe seat; snap the last millimetres so it never stays outside.
+ const k=Math.min(1,Math.max(.2,(frameDt||1/60)*10));
+ c.lerp(roomSafe,k);
+ if(c.x<-b.x||c.x>b.x||c.y<b.y0||c.y>b.y1||c.z>b.z1||c.z<b.z0)c.copy(roomSafe);
  camera.lookAt(t);return true;
 }
+const keepBelowCeiling=keepInRoom; // older callers / film API
 function resetView(){
  if(inspect.active){returnRecord();return;}
  machineClamps();const d=defaultPose();flyTo(d.pos,d.target,.9);
@@ -404,7 +426,7 @@ function buildHula(R,top,W,D){
 }
 function updateHula(energy){
  if(!hula.group)return;
- const now=typeof performance!=='undefined'?performance.now():Date.now(),dt=Math.min(.05,Math.max(.001,hula.last?(now-hula.last)/1000:1/60));hula.last=now;
+ const dt=Math.min(.05,Math.max(.001,frameDt||1/60));hula.last=(typeof performance!=='undefined'?performance.now():Date.now());
  const still=reduce();
  hula.env+=(energy-hula.env)*Math.min(1,dt*(energy>hula.env?18:3));
  const drive=Math.min(1,hula.env*5),onset=Math.max(0,hula.env-hula.prev);hula.prev=hula.env;
@@ -439,7 +461,25 @@ const sleeves=new THREE.Group();sleeves.name='sleeves';scene.add(sleeves);
 const dropRing=new THREE.Mesh(new THREE.TorusGeometry(1,.012,8,160),new THREE.MeshBasicMaterial({color:new THREE.Color(1.6,1.15,.55),transparent:true,opacity:0,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
 dropRing.name='drop-ring';dropRing.visible=false;dropRing.renderOrder=5;scene.add(dropRing);
 let pendingFromLathe=false;
-let sleeveData=[],tableZ=-95,cabW=117,cabD=117,sleeveDrag=null,pendingSwapFrom=null,pendingSwapTilt=0,currentSleeve=null,dropOrder=0,lastRecordId=null;const coverCache=new Map(),MAX_SLEEVES=40,SLEEVE_YAW=.62;let hoverId=null;
+let sleeveData=[],tableZ=-95,cabW=117,cabD=117,sleeveDrag=null,pendingSwapFrom=null,pendingSwapTilt=0,pendingExtract=null,currentSleeve=null,dropOrder=0,lastRecordId=null;const coverCache=new Map(),MAX_SLEEVES=40,SLEEVE_YAW=.62;let hoverId=null;
+/* Capture a sleeve-local slide-out: the disc starts inside the jacket and eases
+   out through the open top edge before any flight to the platter, so it never
+   teleports through the cardboard. */
+function captureExtract(jacket){
+ scene.updateMatrixWorld(true);const S=2*R*1.04,q=jacket.quaternion.clone(),origin=jacket.position.clone();
+ const axis=new THREE.Vector3(0,0,1).applyQuaternion(q);
+ // Platter disc faces +Z; peek record faces along jacket ±Y. Map disc +Z → jacket +Y.
+ const qDisc=q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2));
+ const curZ=(jacket.userData.peekObj&&jacket.userData.peek>.01)?jacket.userData.peekObj.position.z:S*.5;
+ const clearZ=S+R*1.05,insideZ=Math.min(curZ,clearZ-.5);
+ const at=z=>origin.clone().addScaledVector(axis,z);
+ return {inside:at(insideZ),clear:at(clearZ),q:qDisc,axis:axis.clone(),origin:origin.clone(),S,sleeveId:jacket.userData.sleeveId};
+}
+function armSwapFromSleeve(jacketOrId,tilt=Math.PI/2-.15){
+ const j=typeof jacketOrId==='object'&&jacketOrId?.isObject3D?jacketOrId:sleeves.children.find(o=>o.userData.sleeveId===jacketOrId);
+ if(!j||j.userData.empty){pendingExtract=null;pendingSwapFrom=null;pendingSwapTilt=0;return false;}
+ pendingExtract=captureExtract(j);pendingSwapFrom=pendingExtract.clear.clone();pendingSwapTilt=tilt;return true;
+}
 /* Sleeves stay where they are put. sleeveRest: id -> {p,q} for a sleeve left lying on
    the floor; an id with no entry stands in the record crate (the shelf). The playing record's own
    sleeve is shown too, empty, wherever it was put down. */
@@ -868,10 +908,18 @@ function mountRecord(record){
  tonearm.visible=true;armHold=null;buildRecord(record.metadata,record.label,record.cover||null);syncInspectUI();
  // the incoming disc arrives from its sleeve (or from above) and settles on the spindle
  // (it waits in front of the machine, never above it: the horn bell hangs over the platter)
- const from=pendingSwapFrom?pendingSwapFrom.clone():new THREE.Vector3(R*.5,-R*2.6,R*.7),tilt=pendingSwapFrom?pendingSwapTilt:0;pendingSwapFrom=null;pendingSwapTilt=0;lastRecordId=record.id??null;
+ const extract=pendingExtract;pendingExtract=null;
+ const from=extract?extract.clear.clone():(pendingSwapFrom?pendingSwapFrom.clone():new THREE.Vector3(R*.5,-R*2.6,R*.7));
+ const tilt=extract?0:(pendingSwapFrom?pendingSwapTilt:0);pendingSwapFrom=null;pendingSwapTilt=0;lastRecordId=record.id??null;
  const lathe=pendingFromLathe;pendingFromLathe=false;
  if(lathe&&bench.blank){bench.blank.visible=false;bench.state='idle';bench.target=0;bench.shown=0;setBlankGroove(0);}
- if(!reduce()){dropIn={e:0,dur:lathe?1.25:.95,delay:hadRecord?.45:(lathe?.35:0),from,tilt,lathe};if(lathe)disc.position.copy(from);else inspectPath(1,disc.position,from);disc.rotation.x=tilt;}else{dropIn=null;disc.position.set(0,0,0);}
+ if(!reduce()){
+  const dur=lathe?1.25:(extract?1.35:.95);
+  dropIn={e:0,dur,delay:hadRecord?.45:(lathe?.35:0),from,tilt,lathe,extract};
+  if(lathe){disc.position.copy(from);disc.rotation.x=0;}
+  else if(extract){disc.position.copy(extract.inside);disc.quaternion.copy(extract.q);}
+  else{inspectPath(1,disc.position,from);disc.rotation.x=tilt;}
+ }else{dropIn=null;disc.position.set(0,0,0);disc.rotation.set(0,0,0);}
  invalidate(4);
 }
 /* Records only ever travel in front of the machine. Outgoing: lift off the spindle,
@@ -898,13 +946,20 @@ function updateSwap(dt){
   if(a.direct)g.position.copy(a.route.getPointAt(k));else outgoingPath(k,g.position,a.route);g.quaternion.slerpQuaternions(a.q0,a.q1,smooth(.5,.9,k));
   g.scale.setScalar(1-.04*smooth(.85,1,k));g.visible=k<.995; // slips into the sleeve
   if(t>=1){outgoing.remove(g);disposeTree(g);if(a.direct&&bench.blank)bench.blank.visible=true;}busy=true;}
- if(dropIn&&!inspect.active){const d=dropIn;d.e+=dt;const t=Math.max(0,Math.min(1,(d.e-d.delay)/d.dur));
-  const k=easeInOut(t);
-  if(d.lathe){ // off the lathe: straight up clear of the cutting head and lamp, then the usual way in
-   const up=d.from.clone();up.z+=R*.55;
-   if(k<.22)disc.position.copy(d.from).setZ(d.from.z+R*.55*smooth(0,1,k/.22));else inspectPath(1-(k-.22)/.78,disc.position,up);
-  }else{inspectPath(1-k,disc.position,d.from);disc.rotation.x=d.tilt*(1-smooth(0,.45,k));} // out of the sleeve's plane, flat by the time it crosses the cabinet
-  if(t>=1){disc.position.set(0,0,0);disc.rotation.x=0;dropIn=null;if(d.lathe&&bench.blank){bench.blank.visible=true;}}busy=true;}
+ if(dropIn&&!inspect.active){const d=dropIn;
+  // Sub-step so a slow frame cannot skip across the extract→flight join and teleport.
+  let left=dt;while(left>0){const step=Math.min(left,1/30);left-=step;d.e+=step;
+   const t=Math.max(0,Math.min(1,(d.e-d.delay)/d.dur)),k=easeInOut(t);
+   if(d.e<=d.delay){if(d.extract){disc.position.copy(d.extract.inside);disc.quaternion.copy(d.extract.q);}continue;}
+   if(d.lathe){const up=d.from.clone();up.z+=R*.55;
+    if(k<.22)disc.position.copy(d.from).setZ(d.from.z+R*.55*smooth(0,1,k/.22));else inspectPath(1-(k-.22)/.78,disc.position,up);
+   }else if(d.extract){ // one continuous path: slide along the sleeve axis, then the usual flight in
+    const EX=.38,flat=new THREE.Quaternion();
+    if(k<=EX){const u=k/EX;disc.position.lerpVectors(d.extract.inside,d.extract.clear,u);disc.quaternion.copy(d.extract.q);}
+    else{const u=(k-EX)/(1-EX);inspectPath(1-u,disc.position,d.extract.clear);disc.quaternion.slerpQuaternions(d.extract.q,flat,smooth(0,.55,u));}
+   }else{inspectPath(1-k,disc.position,d.from);disc.rotation.x=d.tilt*(1-smooth(0,.45,k));}
+   if(t>=1){disc.position.set(0,0,0);disc.rotation.set(0,0,0);disc.quaternion.identity();dropIn=null;if(d.lathe&&bench.blank){bench.blank.visible=true;}break;}
+  }busy=true;}
  return busy;
 }
 window.addEventListener('vinyl-record',e=>mountRecord(e.detail));
@@ -996,10 +1051,12 @@ function endPointer(e,cancel=false){
   if(cancel||!s.moved){invalidate();return true;} // a click, or cancelled: it goes back where it was
   const j=s.jacket,S=2*R*1.04;
   if(s.armed&&v.swapTo){
-   // the record leaves the sleeve where it is being offered; the empty sleeve is put down in front of the cabinet
-   const peek=j.userData.peekObj;scene.updateMatrixWorld(true);pendingSwapFrom=peek?peek.getWorldPosition(new THREE.Vector3()):jacketCenter(presentPose());pendingSwapTilt=Math.PI/2-.15;
+   // the record slides out of the offered sleeve along its open edge, then flies to the platter
+   scene.updateMatrixWorld(true);armSwapFromSleeve(j);
+   // hide the peek stand-in so only the real disc is seen sliding out
+   if(j.userData.peekObj){j.userData.peek=0;j.userData.peekObj.visible=false;}
    sleeveRest.delete(s.id); // its empty sleeve goes back on the shelf (only a sleeve you put down yourself stays out)
-   if(!v.swapTo(s.id)){pendingSwapFrom=null;pendingSwapTilt=0;}
+   if(!v.swapTo(s.id)){pendingSwapFrom=null;pendingSwapTilt=0;pendingExtract=null;}
   }else if(s.post){window.dispatchEvent?.(new CustomEvent('vinyl-save',{detail:{id:s.id}}));j.userData.home=j.userData.home; // saved; it goes back where it was
   }else if(s.rack){sleeveRest.delete(s.id);buildSleeves();}
   else if(s.c){const yaw=s.yaw+(Math.random()-.5)*.35,rest=floorPose(clearOfCabinet(s.c,yaw),yaw,++dropOrder);sleeveRest.set(s.id,rest);j.userData.home=rest;}
@@ -1036,7 +1093,7 @@ function syncQualityUI(s=post.state()){if(!qualitySelect)return;qualitySelect.va
 qualitySelect?.addEventListener('change',()=>post.setMode(qualitySelect.value));syncQualityUI();
 // Screen positions of things, for automated checks (and handy in the console).
 function toClient(v){const b=renderer.domElement.getBoundingClientRect(),n=v.clone().project(camera);return {x:b.left+(n.x+1)/2*b.width,y:b.top+(1-n.y)/2*b.height};}
-window.vinylView={toClient:(x,y,z)=>toClient(new THREE.Vector3(x,y,z)),sleevePoints:()=>sleeves.children.filter(j=>j.userData.sleeveId!=null).map(j=>({id:j.userData.sleeveId,empty:!!j.userData.empty,...toClient(jacketCenter({p:j.position,q:j.quaternion}))})),get R(){return R;},get tableZ(){return tableZ;},invalidate,setQuality:m=>post.setMode(m),get quality(){return post.state();},get hoverId(){return hoverId;},get lathe(){return bench?{state:bench.state,shown:bench.shown,target:bench.target}:null;},get info(){const i=renderer.info;return {calls:i.render.calls,triangles:i.render.triangles,geometries:i.memory.geometries,textures:i.memory.textures,programs:i.programs?.length};}};
+window.vinylView={toClient:(x,y,z)=>toClient(new THREE.Vector3(x,y,z)),sleevePoints:()=>sleeves.children.filter(j=>j.userData.sleeveId!=null).map(j=>({id:j.userData.sleeveId,empty:!!j.userData.empty,...toClient(jacketCenter({p:j.position,q:j.quaternion}))})),get R(){return R;},get tableZ(){return tableZ;},invalidate,setQuality:m=>post.setMode(m),get quality(){return post.state();},get hoverId(){return hoverId;},get lathe(){return bench?{state:bench.state,shown:bench.shown,target:bench.target}:null;},get info(){const i=renderer.info;return {calls:i.render.calls,triangles:i.render.triangles,geometries:i.memory.geometries,textures:i.memory.textures,programs:i.programs?.length};},get dropIn(){return dropIn;},keepInRoom,keepBelowCeiling,armSwapFromSleeve,captureExtract,roomBounds};
 document.addEventListener?.('visibilitychange',()=>invalidate(2));
 
 // The demo may finish loading while Three.js/room modules are still downloading.
@@ -1080,7 +1137,7 @@ function frame(){
  const why=[];
  if(updateSleeves(dt))why.push('sleeves');if(updateLathe(dt))why.push('lathe');if(updateInspection(dt))why.push('inspect');if(updateSwap(dt))why.push('swap');
  if(updateCamTween(dt)){zoom.goal=null;zoom.vel=0;why.push('flight');}else{const z=applyZoom(dt);if(controls.update()||z)why.push('controls');}
- if(keepBelowCeiling())why.push('ceiling');
+ if(keepInRoom())why.push('room');
  updateAudioListener();
  const sig=signature();if(!(Math.abs(sig-lastSig)<1e-7)){if(!why.length)why.push('moved:'+(sig-lastSig).toExponential(1));lastSig=sig;}
  let busy=why.length>0;window.vinylView.lastDraw=why.join(',')||(dirty>0?'dirty':'');
