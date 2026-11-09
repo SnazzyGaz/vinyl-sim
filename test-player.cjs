@@ -33,7 +33,7 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  element('recordFile').onchange({target:{files:[{name:'a.groove.wav'}],value:''}});await tick();
  assert.equal(element('fault').hidden,false);assert.equal(apiPosts().length,0);
  element('recordFile').onchange({target:{files:[{name:'tune.png'},{name:'tune.groove.wav'},{name:'tune.json'}],value:''}});await tick();await tick();
- assert.equal(apiPosts()[0],'/api/import');assert.equal(vinyl.record,record);assert.equal(vinyl.down,false);
+ assert.equal(apiPosts()[0],'/api/import');assert.equal(vinyl.record,record);assert.equal(vinyl.down,false);assert.equal(vinyl.record.label,'tune');
  assert.equal(element('needleState').textContent,'Needle lifted — silent');
  assert.equal(context.gain.connected,context.panner);assert.equal(context.panner.connected,context.destination);
  assert.equal(context.panner.panningModel,'HRTF');assert.equal(context.panner.distanceModel,'inverse');assert.equal(context.panner.rolloffFactor,.5);
@@ -65,12 +65,12 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  // Library + sleeves: opening a second record sleeves the first, keeps its buffers; swapTo needs no re-import.
  const firstBuffer=vinyl.buffer;nextImport=record2;const posts=()=>apiPosts().length;
  element('recordFile').onchange({target:{files:[{name:'b.png'}],value:''}});await tick();await tick();
- assert.equal(posts(),2);assert.equal(vinyl.record,record2);assert.equal(vinyl.rpm,78);assert.equal(element('recordName').textContent,'b');assert.equal(vinyl.libraryCount,2);
+ assert.equal(posts(),2);assert.equal(vinyl.record,record2);assert.equal(vinyl.rpm,78);assert.equal(element('recordName').textContent,'b');assert.equal(vinyl.record.label,'b');assert.equal(vinyl.libraryCount,2);
  let sl=events.filter(e=>e.type==='vinyl-sleeves').at(-1).detail;assert.equal(sl.current,record2.id);assert.deepEqual(sl.sleeves.map(s=>[s.id,s.label,s.cover]),[[record.id,'tune',record.base+'preview.png']]);
  assert.equal(vinyl.sources.both,false);
  const fetchesBefore=requests.length;element('needle').onclick();await tick();assert.equal(vinyl.down,true);
  assert.equal(vinyl.swapTo(record.id),true);assert.equal(requests.length,fetchesBefore,'swap re-uses decoded buffers: no fetch, no /api/import');
- assert.equal(vinyl.record,record);assert.equal(vinyl.down,false,'needle lifted on swap');assert.equal(vinyl.time(),0);assert.equal(vinyl.rpm,45);assert.equal(element('recordName').textContent,'tune');
+ assert.equal(vinyl.record,record);assert.equal(vinyl.down,false,'needle lifted on swap');assert.equal(vinyl.time(),0);assert.equal(vinyl.rpm,45);assert.equal(element('recordName').textContent,'tune');assert.equal(vinyl.record.label,'tune');
  assert.equal(vinyl.record.playback_source,'png','source choice remembered per record');assert.equal(vinyl.buffer,firstBuffer);
  assert.equal(events.filter(e=>e.type==='vinyl-record').at(-1).detail,record);
  sl=events.filter(e=>e.type==='vinyl-sleeves').at(-1).detail;assert.deepEqual(sl.sleeves.map(s=>s.id),[record2.id]);
@@ -79,6 +79,12 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  vinyl.setVolume(.4);assert.equal(element('volume').value,'0.4');assert.equal(element('volumeValue').textContent,40);
  vinyl.setSpeed(78);assert.equal(element('rpm').value,78);assert.equal(groups.rpmPreset[2].checked,true);
  vinyl.setSource('vector');assert.equal(vinyl.record.playback_source,'vector');assert.equal(groups.source[0].checked,true);
+ // Inspection is an audio safety interlock, including a drop queued before pickup.
+ await vinyl.drop(0);assert.equal(vinyl.down,true);const queued=vinyl.drop(0);vinyl.setInspecting(true);await queued;
+ assert.equal(vinyl.inspecting,true);assert.equal(vinyl.down,false);assert.equal(element('needle').disabled,true);
+ const count=sources.length;await vinyl.drop(1);vinyl.grabStart(50,0);assert.equal(sources.length,count);assert.equal(vinyl.state.grabbed,false);
+ vinyl.setVolume(.6);assert.equal(context.gain.gain.value,.6);vinyl.setInspecting(false);assert.equal(element('needle').disabled,false);
+ await vinyl.drop(0);assert.equal(vinyl.down,true);vinyl.lift();
  // Two PNGs in one drop still refused.
  element('recordFile').onchange({target:{files:[{name:'x.png'},{name:'y.png'}],value:''}});await tick();assert.equal(element('fault').hidden,false);assert.match(element('fault').textContent,/one at a time/);
  console.log('PASS: record library + sleeves event, swapTo without re-import (needle lifted, t=0, rpm from cut), 3D setters for volume/speed/source, one PNG per drop; PNG-required open, vector/PNG source plate, drop/lift single button, 78 preset speed ratio, lifted seek does not drop, down seek resumes, hold/release resumes. Mocked DOM/audio, not a browser test.');

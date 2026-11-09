@@ -27,7 +27,7 @@ const tick=()=>new Promise(r=>setTimeout(r,5));
  element('recordFile').onchange({target:{files:[{name:'tune.png'},{name:'tune.groove.wav'},{name:'tune.json'}],value:''}});for(let i=0;i<5;i++)await tick();
  assert.ok(requests.some(u=>u.startsWith('api/progress?job=')),'relative probe');assert.ok(!requests.some(u=>u.includes('/api/import')),'no Python import on Pages');
  assert.equal(opened.length,1);assert.equal(opened[0].vector.name,'tune.groove.wav');assert.equal(opened[0].json.name,'tune.json');
- assert.equal(vinyl.record.metadata,metadata);assert.equal(vinyl.record.previewUrl,'blob:preview-1');assert.equal(vinyl.sources.both,true);
+ assert.equal(vinyl.record.metadata,metadata);assert.equal(vinyl.record.previewUrl,'blob:preview-1');assert.equal(vinyl.record.heightmapFile.name,'tune.png','original PNG kept for lossless inspection');assert.equal(vinyl.sources.both,true);
  assert.equal(vinyl.buffer.getChannelData(0)[0],.5,'vector buffer from decoded samples');assert.equal(vinyl.buffer.sampleRate,16000);
  assert.equal(events.filter(e=>e.type==='vinyl-record').at(-1).detail.previewUrl,'blob:preview-1');
  element('recordFile').onchange({target:{files:[{name:'second.png'}],value:''}});for(let i=0;i<5;i++)await tick();

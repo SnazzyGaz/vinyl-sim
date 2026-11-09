@@ -13,30 +13,32 @@ try {
   const threeFile=path.join(tmp,'three.mjs');await fs.writeFile(threeFile,await download(base+'build/three.module.js'));
   const controlFile=path.join(tmp,'OrbitControls.mjs');await fs.writeFile(controlFile,(await download(base+'examples/jsm/controls/OrbitControls.js')).replace("from 'three'",`from '${pathToFileURL(threeFile).href}'`));
   const real=await import(pathToFileURL(threeFile));const {OrbitControls}=await import(pathToFileURL(controlFile));
+  const {buildParlor}=await import('data:text/javascript;base64,'+Buffer.from(await fs.readFile(new URL('./static/room.js',import.meta.url),'utf8')).toString('base64'));
   class Element {
     constructor(){this.listeners={};this.style={};this.clientWidth=800;this.clientHeight=600;}
     addEventListener(k,fn){(this.listeners[k]??=new Set()).add(fn);}
     removeEventListener(k,fn){this.listeners[k]?.delete(fn);}
     emit(k,e={}){for(const fn of [...(this.listeners[k]||[])])fn({preventDefault(){},stopPropagation(){},...e});}
+    setAttribute(k,v){this[k]=v;}
     getRootNode(){return root;} setPointerCapture(){} releasePointerCapture(){}
     getBoundingClientRect(){return {left:0,top:0,width:800,height:600};}
     replaceChildren(el){this.child=el;}
   }
-  const root=new Element(),view=new Element(),reset=new Element();let tick;
-  const THREE={...real,WebGLRenderer:class{constructor(){this.domElement=new Element();}setPixelRatio(){}setSize(){}render(scene,camera){scene.updateMatrixWorld();camera.updateMatrixWorld();}},TextureLoader:class{load(url,onLoad,onProgress,onError){onError?.(new Error('no texture in test'));}}};
-  let spatial;let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={setListener(position,forward,up,mouth,refDistance){spatial={position:position.clone(),forward:forward.clone(),up:up.clone(),mouth:mouth.clone(),refDistance};},record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
+  const root=new Element(),view=new Element(),reset=new Element(),inspectButton=new Element();let tick;
+  const THREE={...real,WebGLRenderer:class{constructor(){this.domElement=new Element();this.shadowMap={};}setPixelRatio(){}setSize(){}render(scene,camera){scene.updateMatrixWorld();camera.updateMatrixWorld();}},TextureLoader:class{load(url,onLoad,onProgress,onError){onError?.(new Error('no texture in test'));}}};
+  let spatial;let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={inspecting:false,setInspecting(value){this.inspecting=value;if(value)this.lift();},setListener(position,forward,up,mouth,refDistance){spatial={position:position.clone(),forward:forward.clone(),up:up.clone(),mouth:mouth.clone(),refDistance};},record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
   const win=new Element();win.vinyl=vinyl;
-  const context={THREE,OrbitControls,document:{getElementById:id=>({view,resetView:reset,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
+  const context={THREE,OrbitControls,buildParlor,clearTimeout,setTimeout,document:{getElementById:id=>({view,resetView:reset,inspectRecord:inspectButton,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
   vm.createContext(context);
-  const source=(await fs.readFile(new URL('./static/view.js',import.meta.url),'utf8')).replace(/^import .*;$/mg,'');
-  vm.runInContext(source+'\nglobalThis.api={camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R};',context);
+  const source=(await fs.readFile(new URL('./static/view.js',import.meta.url),'utf8')).replace(/^import .*;$/mg,'').replaceAll('import.meta.url',JSON.stringify(new URL('./static/view.js',import.meta.url).href));
+  vm.runInContext(source+'\nglobalThis.api={camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R,inspect,beginInspection,returnRecord,labelPrint};',context);
   const {camera,controls,renderer,disc,scene}=context.api,canvas=renderer.domElement;
   // Empty platter before any record; piano-black scene; brass arm, ebonised pillar.
   assert.equal(scene.background.getHex(),0x141310);assert.ok(disc.getObjectByName('placeholder-disc'));
   {const {phonograph,sleeves}=context.api;assert.ok(phonograph.getObjectByName('hula-girl'),'hula girl built with the cabinet');assert.ok(phonograph.getObjectByName('hula-dancer'));assert.equal(sleeves.name,'sleeves');assert.ok(scene.getObjectByName('sleeves'));
    for(const n of ['volume-knob','speed-lever','source-switch'])assert.equal(phonograph.getObjectByName(n),undefined,n+' removed');}
   const metadata={disc_radius_mm:90,label_radius_mm:27,thickness_mm:2.5,r_start_mm:86,pitch_mm:5,lead_in_turns:.35,rpm_cut:45,amp_mm:.3};
-  vinyl.record={metadata,base:'/unused/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
+  vinyl.record={label:'Original tune',metadata,base:'/unused/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
   // The same frame sends world-space horn/camera vectors, with reset gain at unity.
   const close=(a,b)=>assert.ok(a.distanceTo(b)<1e-7);
   close(spatial.mouth,new real.Vector3(-18,24.3,124.2));close(spatial.position,camera.position);
@@ -52,12 +54,13 @@ try {
   const assertBlack=mat=>{assert.equal(mat.color.getHex(),0x141416);assert.equal(mat.metalness,.04);assert.equal(mat.roughness,.34);assert.equal(mat.vertexColors,false);assert.equal(mat.map,null);};
   assertBlack(disc.children[0].material);
   const label=disc.getObjectByName('vinyl-label');
-  assert.equal(label.material.color.getHex(),0xc42420); // loaded record keeps the red paper label
-  assert.ok(label.position.z>=metadata.thickness_mm+.2);
+  assert.equal(label.userData.title,'Original tune');assert.equal(label.material.color.getHex(),0xc42420); // loaded record keeps the red paper label
+  assert.ok(label.position.z>metadata.thickness_mm);
   assert.equal(label.geometry.type,'RingGeometry');
   assert.ok(Math.abs(label.geometry.parameters.innerRadius-3.6)<1e-6,'spindle hole through the red label');
   assert.equal(label.geometry.parameters.outerRadius,metadata.label_radius_mm);
-  const lights=scene.children.filter(o=>o.isLight);assert.ok(lights.every(o=>o.intensity<=1));
+  assert.equal(renderer.toneMapping,real.ACESFilmicToneMapping);assert.equal(renderer.shadowMap.enabled,true);assert.ok(scene.getObjectByName('window-key').castShadow);assert.ok(scene.getObjectByName('deco-parlor'));assert.ok(scene.getObjectByName('floor').receiveShadow);
+  assert.equal(disc.children[0].material.type,'MeshPhysicalMaterial');for(const name of ['vinyl-edge','vinyl-underside','spindle-hole'])assert.ok(disc.getObjectByName(name));
   const event=(x,y,button)=>({pointerId:1,pointerType:'mouse',button,clientX:x,clientY:y,pageX:x,pageY:y,ctrlKey:false,metaKey:false,shiftKey:false});
   const initial=camera.position.clone();canvas.emit('pointerdown',event(400,300,2));canvas.emit('pointermove',event(520,350,2));canvas.emit('pointerup',event(520,350,2));
   for(let i=0;i<80;i++)tick();assert.ok(camera.position.distanceTo(initial)>1);assert.equal(lifts,0);assert.equal(placements.length,0);assert.equal(vinyl.down,true);close(spatial.position,camera.position);
@@ -118,8 +121,35 @@ try {
   {const buf={sampleRate:1000,length:10000,getChannelData(){const a=new Float32Array(10000);for(let i=0;i<a.length;i++)a[i]=Math.sin(i*.3)*.5;return a;}};vinyl.buffer=buf;vinyl.down=true;vinyl.state.grabbed=false;
    const h=context.api.hula;for(let i=0;i<40;i++){tick();}assert.ok(h.env>.1,'loudness envelope follows the audio');let peak=0;for(let i=0;i<60;i++){tick();peak=Math.max(peak,Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz));}assert.ok(peak>.03,'she sways on the spring');
    vinyl.down=false;for(let i=0;i<60;i++)tick();assert.ok(h.env<.05,'needle up: no drive');for(let i=0;i<900;i++)tick();assert.ok(Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz)<.01,'spring damps back to rest');
-   vinyl.record={metadata:{...metadata,disc_radius_mm:100},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
-   assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);close(spatial.mouth,new real.Vector3(-20,27,138));assert.ok(Math.abs(spatial.refDistance-camera.position.distanceTo(spatial.mouth))<1e-7);
+   vinyl.record={label:'Second pressing',metadata:{...metadata,disc_radius_mm:100},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
+   assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);assert.equal(disc.getObjectByName('vinyl-label').userData.title,'Second pressing');close(spatial.mouth,new real.Vector3(-20,27,138));assert.ok(Math.abs(spatial.refDistance-camera.position.distanceTo(spatial.mouth))<1e-7);
    assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');vinyl.buffer=null;}
-  console.log('PASS: horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, dim lights, piano-black scene, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
+  // Needle-up pickup is inspection, never scratch. Playback stays locked until landing.
+  {vinyl.down=false;const {inspect}=context.api;const before=placements.length;reset.emit('click');tick();
+   const point=new real.Vector3(45,0,2.5).project(camera),px=(point.x+1)*400,py=(1-point.y)*300;
+   canvas.emit('pointerdown',event(px,py,0));assert.equal(inspect.active,true);assert.equal(vinyl.inspecting,true);
+   for(let i=0;i<100;i++)tick();assert.equal(inspect.phase,'held');assert.ok(disc.position.length()>100);assert.equal(placements.length,before);
+   assert.equal(controls.minAzimuthAngle,-Infinity);assert.ok(controls.minDistance<90);assert.ok(controls.maxPolarAngle>Math.PI*.9);
+   assert.equal(disc.children[0].geometry.parameters.thetaSegments,1024);assert.equal(disc.children[0].geometry.parameters.phiSegments,128);
+   const n=disc.position.clone().project(camera),sx=(n.x+1)*400,sy=(1-n.y)*300,q=disc.quaternion.clone();
+   // Pick an actual point on the face rather than the spindle hole.
+   const face=disc.localToWorld(new real.Vector3(40,0,2.5)).project(camera),fx=(face.x+1)*400,fy=(1-face.y)*300;
+   canvas.emit('pointerdown',event(fx,fy,0));canvas.emit('pointermove',event(fx+40,fy+20,0));canvas.emit('pointerup',event(fx+40,fy+20,0));tick();assert.ok(q.angleTo(disc.quaternion)>.1);assert.equal(placements.length,before);
+   win.emit('keydown',{key:'Escape'});for(let i=0;i<100;i++)tick();assert.equal(inspect.active,false);assert.equal(vinyl.inspecting,false);close(disc.position,new real.Vector3());assert.ok(Math.abs(disc.quaternion.x)+Math.abs(disc.quaternion.y)<1e-7);assert.equal(controls.minDistance,350);assert.equal(controls.maxDistance,750);assert.ok(controls.maxAzimuthAngle-controls.minAzimuthAngle<2.401);
+   // New record/swap cancels even an in-flight inspection and leaves no held transforms.
+   context.api.beginInspection();tick();win.emit('vinyl-record',{detail:vinyl.record});tick();assert.equal(inspect.active,false);close(disc.position,new real.Vector3());assert.equal(vinyl.inspecting,false);
+  }
+  // Curved print uses individual tangent glyphs, never a stretched horizontal title.
+  {const glyphs=[],angles=[],positions=[];const pen={fillRect(){},beginPath(){},arc(){},stroke(){},measureText(t){return {width:t.length*35};},save(){},restore(){},translate(x,y){positions.push([x,y]);},rotate(a){angles.push(a);},fillText(t){glyphs.push(t);}};
+   context.document.createElement=()=>({getContext:()=>pen});const texture=context.api.labelPrint('Original tune',metadata);
+   assert.ok(texture);assert.ok(glyphs.join('').startsWith('ORIGINAL TUNE'));assert.ok(glyphs.every(s=>Array.from(s).length===1));
+   assert.ok(angles.slice(0,13).some(a=>a<-.1)&&angles.slice(0,13).some(a=>a>.1),'glyphs follow both halves of the title arc');
+   for(const [x,y] of positions.slice(0,13))assert.ok(Math.abs(Math.hypot(x-512,y-512)-1024*.34)<1e-6);texture.dispose();}
+  // Slow Three/module fetch: the demo and sleeve event can predate the 3D listener.
+  {const earlyWin=new Element(),earlyView=new Element(),earlyReset=new Element(),earlyInspect=new Element();
+   earlyWin.vinyl={...vinyl,record:{label:'Loaded before Three',metadata,base:'/unused/'},sleeves:()=>[{id:'prior',label:'Earlier pressing'}]};
+   const early={THREE,OrbitControls,buildParlor,clearTimeout,setTimeout,document:{getElementById:id=>({view:earlyView,resetView:earlyReset,inspectRecord:earlyInspect,status:root}[id])},window:earlyWin,devicePixelRatio:1,performance:{now:()=>0},requestAnimationFrame(){},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
+   vm.createContext(early);vm.runInContext(source+'\nglobalThis.loaded={disc,sleeves};',early);
+   assert.equal(early.loaded.disc.getObjectByName('placeholder-disc'),undefined);assert.equal(early.loaded.disc.getObjectByName('vinyl-label').userData.title,'Loaded before Three');assert.ok(early.loaded.sleeves.children.some(o=>o.userData.sleeveId==='prior'));}
+  console.log('PASS: early-demo/module race caught; curved title tangent glyphs; inspection pickup/rotation/Escape/reload interlock and reset, solid PVC, room/shadows/ACES; horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, sleeves (fallback Deco front, drag-off eases home, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, window light and finished room, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

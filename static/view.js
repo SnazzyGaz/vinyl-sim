@@ -1,26 +1,34 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {buildParlor} from './room.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 const view=document.getElementById('view');
 const scene=new THREE.Scene();scene.background=new THREE.Color('#141310'); // piano-black well
 const renderer=new THREE.WebGLRenderer({antialias:true,logarithmicDepthBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));view.replaceChildren(renderer.domElement);
-const camera=new THREE.PerspectiveCamera(42,1,.1,2000);camera.position.set(0,-220,300);camera.lookAt(0,0,0);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const camera=new THREE.PerspectiveCamera(42,1,.1,4500);camera.position.set(0,-220,300);camera.lookAt(0,0,0);
 camera.up.set(0,0,1);
 const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,2.5);controls.enableDamping=true;controls.enablePan=false;controls.maxPolarAngle=Math.PI*.47;controls.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_ROTATE};controls.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
 /* Fixed-ish view: orbit only round the front of the machine, a little zoom, no pan. */
+const inspect={active:false,phase:'idle',elapsed:0,drag:null};
 const ORBIT_SWING=1.2;controls.minPolarAngle=Math.PI*.2;
-function resetView(){const damping=controls.enableDamping;controls.enableDamping=false;controls.minAzimuthAngle=-Infinity;controls.maxAzimuthAngle=Infinity;controls.minDistance=0;controls.maxDistance=Infinity;controls.update();
+function resetView(){if(inspect.active){returnRecord();return;}camera.up.set(0,0,1);controls.enablePan=false;controls.zoomToCursor=false;controls.minPolarAngle=Math.PI*.2;controls.maxPolarAngle=Math.PI*.47;const damping=controls.enableDamping;controls.enableDamping=false;controls.minAzimuthAngle=-Infinity;controls.maxAzimuthAngle=Infinity;controls.minDistance=0;controls.maxDistance=Infinity;controls.update();
  camera.position.set(R*1.02,-R*6.0,R*2.35);controls.target.set(-R*.4,R*.25,R*.42);controls.update(); // same distance/angle as before, framed a touch left to include the sleeve rack
  const az=controls.getAzimuthalAngle();controls.minAzimuthAngle=az-ORBIT_SWING;controls.maxAzimuthAngle=az+ORBIT_SWING;
  controls.minDistance=R*3.5;controls.maxDistance=R*7.5;controls.update();controls.enableDamping=damping;}
 document.getElementById('resetView').addEventListener('click',resetView);
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
-scene.add(new THREE.HemisphereLight(0xffffff,0x252935,.32));
-const key=new THREE.DirectionalLight(0xffffff,.55);key.position.set(-150,-80,300);scene.add(key);
-const rake=new THREE.DirectionalLight(0xfff2d8,.9);rake.position.set(260,30,28);scene.add(rake);
+scene.add(new THREE.HemisphereLight(0xe2ecff,0x403026,1.05));
+const key=new THREE.DirectionalLight(0xffefda,2.6);key.name='window-key';key.position.set(-360,500,570);key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-480,right:480,top:480,bottom:-480,near:10,far:1800});key.shadow.bias=-.00025;key.shadow.normalBias=.35;key.shadow.camera.updateProjectionMatrix();scene.add(key);
+const frontFill=new THREE.DirectionalLight(0xffdcb0,.65);frontFill.position.set(-180,-320,240);scene.add(frontFill);
+const rake=new THREE.DirectionalLight(0xfff2d8,.8);rake.position.set(260,30,28);scene.add(rake);
 // groove light: a low warm graze from behind-left; its specular glances off the bumped groove walls toward the front camera
-const graze=new THREE.DirectionalLight(0xffe2b0,.85);graze.name='groove-graze';graze.position.set(-140,300,26);scene.add(graze);
-const grazeFront=new THREE.DirectionalLight(0xd8e4ff,.28);grazeFront.name='groove-rim';grazeFront.position.set(-260,-120,20);scene.add(grazeFront);
+const graze=new THREE.DirectionalLight(0xffe2b0,1.1);graze.name='groove-graze';graze.position.set(-140,300,26);scene.add(graze);
+const grazeFront=new THREE.DirectionalLight(0xd8e4ff,.4);grazeFront.name='groove-rim';grazeFront.position.set(-260,-120,20);scene.add(grazeFront);
+const inspectRake=new THREE.DirectionalLight(0xdbe9ff,1.6);inspectRake.name='inspect-rake';inspectRake.visible=false;scene.add(inspectRake,inspectRake.target);
+const inspectSoft=new THREE.DirectionalLight(0xfff2da,1.8);inspectSoft.name='inspect-softbox';inspectSoft.visible=false;scene.add(inspectSoft,inspectSoft.target);
 const disc=new THREE.Group();scene.add(disc);
 function metal(color,metalness=.7,roughness=.32){return new THREE.MeshStandardMaterial({color,metalness,roughness});}
 const tonearm=new THREE.Group();tonearm.visible=false;scene.add(tonearm);
@@ -45,7 +53,7 @@ function buildArm(R,thickness){
  armRig.position.set(armPivotX,armPivotY,HINGE_Z);
  const brassM=metal(0xc4a15a,.72,.28),nickelM=metal(0xb9b6ad,.78,.3);
  if(envMap){brassM.envMap=nickelM.envMap=envMap;}
- const add=(geo,mat,x,y,z,rx=0,ry=0,rz=0)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);armTilt.add(m);armParts.push(m);return m;};
+ const add=(geo,mat,x,y,z,rx=0,ry=0,rz=0)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);m.castShadow=true;m.receiveShadow=true;armTilt.add(m);armParts.push(m);return m;};
  // hinge knuckle at the pivot
  add(new THREE.CylinderGeometry(4.2,4.2,9,24),brassM,0,0,0,0,0,0);
  // the lever: one fixed-length tapered tube from the hinge to the reproducer neck
@@ -82,12 +90,50 @@ function placeTonearm(tipX,tipY,tipZ,down){
 }
 let R=90,drag=false,version=0,bumpTex=null;
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
-function clearDisc(){while(disc.children.length){const c=disc.children[0];disc.remove(c);c.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const mat of (Array.isArray(o.material)?o.material:[o.material])){if(mat.map)mat.map.dispose();if(mat.bumpMap&&mat.bumpMap!==bumpTex)mat.bumpMap.dispose();mat.dispose();}}});}}
-function vinylMaterial(texture=null){return new THREE.MeshStandardMaterial({color:0x141416,roughness:.34,metalness:.04,vertexColors:false,side:THREE.FrontSide,bumpMap:texture||null,bumpScale:texture?-1.7:0,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});}
-function addLabel(m){
+function clearDisc(){while(disc.children.length){const c=disc.children[0];disc.remove(c);c.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const mat of (Array.isArray(o.material)?o.material:[o.material])){if(mat.map)mat.map.dispose();mat.dispose();}}});}}
+function vinylMaterial(texture=null){return new THREE.MeshPhysicalMaterial({color:0x141416,roughness:.34,metalness:.04,clearcoat:.65,clearcoatRoughness:.22,envMapIntensity:.4,vertexColors:false,side:THREE.FrontSide,bumpMap:texture||null,bumpScale:texture?-1.7:0,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});}
+function labelPrint(title,m){
+ if(typeof document.createElement!=='function')return null;
+ try{
+  const N=1024,c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d');if(!g)return null;
+  g.fillStyle='#c42420';g.fillRect(0,0,N,N);g.strokeStyle='#ddc799';g.lineWidth=2;
+  for(const r of [.458,.438,.165]){g.beginPath();g.arc(N/2,N/2,N*r,0,Math.PI*2);g.stroke();}
+  g.fillStyle='#f3dfb6';g.textAlign='center';g.textBaseline='middle';
+  // Typeset individual, un-stretched glyphs tangent to a circle, with measured tracking.
+  const arc=(text,r,font,maxAngle,bottom=false)=>{
+   const chars=Array.from(text);let size=font,tracking=N*.004;
+   const measure=()=>{g.font=`500 ${size}px Georgia, serif`;return chars.map(ch=>g.measureText(ch).width+tracking);};
+   let widths=measure(),width=widths.reduce((a,b)=>a+b,0);
+   while(width/r>maxAngle&&size>8){size-=1;tracking=Math.max(.5,size*.055);widths=measure();width=widths.reduce((a,b)=>a+b,0);}
+   let cursor=-width/2;
+   for(let i=0;i<chars.length;i++){
+    const offset=(cursor+widths[i]/2)/r,theta=bottom?Math.PI/2-offset:-Math.PI/2+offset;
+    g.save();g.translate(N/2+Math.cos(theta)*r,N/2+Math.sin(theta)*r);g.rotate(bottom?theta-Math.PI/2:theta+Math.PI/2);g.fillText(chars[i],0,0);g.restore();cursor+=widths[i];
+   }
+  };
+  const name=String(title||'Record').toUpperCase();
+  // Very long filenames get two concentric title arcs, not one compressed stamp.
+  if(name.length>46){let cut=name.lastIndexOf(' ',Math.ceil(name.length/2)+8);if(cut<name.length*.3)cut=Math.ceil(name.length/2);
+   arc(name.slice(0,cut).trim(),N*.365,N*.061,2.75);arc(name.slice(cut).trim(),N*.265,N*.052,2.75);
+  }else arc(name,N*.34,N*.088,2.65);
+  const sec=Math.max(0,Math.floor(m.duration_sec||0)),time=Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
+  arc(`${Math.abs(m.rpm_cut-100/3)<.05?'33⅓':Math.round(m.rpm_cut*10)/10} RPM  ·  ${Math.round(m.disc_radius_mm*2)} MM  ·  ${time}`,N*.31,N*.038,2.6,true);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=renderer.capabilities?.getMaxAnisotropy?.()||1;return t;
+ }catch{return null;}
+}
+function addLabel(m,title){
  const holeR=3.6; // ~7.2 mm spindle hole, like a real LP
- const label=new THREE.Mesh(new THREE.RingGeometry(holeR,m.label_radius_mm,96),new THREE.MeshStandardMaterial({color:0xc42420,roughness:.8,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
- label.name='vinyl-label';label.position.z=m.thickness_mm+.5;disc.add(label);
+ const print=labelPrint(title,m);
+ const label=new THREE.Mesh(new THREE.RingGeometry(holeR,m.label_radius_mm,128),new THREE.MeshStandardMaterial({color:print?0xffffff:0xc42420,map:print,roughness:.8,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));label.userData.title=title||'Record';
+ label.name='vinyl-label';label.position.z=m.thickness_mm+.08;disc.add(label);
+}
+function buildRecord(m,title){
+ const top=new THREE.Mesh(new THREE.RingGeometry(m.label_radius_mm,R,256),vinylMaterial());top.name='vinyl-grooves';top.position.z=m.thickness_mm;disc.add(top);
+ const pvc=vinylMaterial();pvc.polygonOffset=false;
+ const rim=new THREE.Mesh(new THREE.CylinderGeometry(R,R,m.thickness_mm,256,1,true),pvc);rim.name='vinyl-edge';rim.rotation.x=Math.PI/2;rim.position.z=m.thickness_mm/2;disc.add(rim);
+ const back=new THREE.Mesh(new THREE.RingGeometry(3.6,R,256),pvc);back.name='vinyl-underside';back.rotation.x=Math.PI;disc.add(back);
+ const hole=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.6,m.thickness_mm,32,1,true),new THREE.MeshPhysicalMaterial({color:0x141416,roughness:.4,side:THREE.BackSide}));hole.rotation.x=Math.PI/2;hole.position.z=m.thickness_mm/2;hole.name='spindle-hole';disc.add(hole);
+ addLabel(m,title);disc.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
 }
 function enhanceBump(tex){
  const img=tex.image,c=document.createElement('canvas');
@@ -118,9 +164,7 @@ function enhanceBump(tex){
 function loadBump(url,done){
  new THREE.TextureLoader().load(url,tex=>{
   tex.colorSpace=THREE.NoColorSpace;
-  if(bumpTex){bumpTex.dispose();bumpTex=null;}
-  bumpTex=enhanceBump(tex);
-  done(bumpTex);
+  done(enhanceBump(tex));
  },undefined,()=>done(null));
 }
 // Empty platter: a blank black disc with an ivory and brass label. Only shown
@@ -137,9 +181,11 @@ function addPlaceholder(){
    brass morning-glory horn from a back-right bracket, side crank, nickel
    platter. Sized from the disc radius R; rebuilt when R changes. */
 const phonograph=new THREE.Group();phonograph.name='phonograph';scene.add(phonograph);
+const room=buildParlor(THREE);scene.add(room);
 let envMap=null;
-try{const pm=new THREE.PMREMGenerator(renderer);envMap=pm.fromScene(new RoomEnvironment(),.04).texture;pm.dispose();}catch{envMap=null;}
-function lacquer(color,rough=.3){const m=new THREE.MeshPhysicalMaterial({color,roughness:rough,metalness:0,clearcoat:1,clearcoatRoughness:.12});if(envMap){m.envMap=envMap;m.envMapIntensity=.3;}return m;}
+function bakeRoomEnvironment(){try{const pm=new THREE.PMREMGenerator(renderer),interior=new THREE.Scene();interior.background=new THREE.Color(0x34362f);interior.add(room.clone(true),key.clone(),new THREE.HemisphereLight(0xe2ecff,0x403026,1.05));
+ try{envMap=pm.fromScene(interior,.04,.1,4500).texture;}catch{envMap=pm.fromScene(new RoomEnvironment(),.04).texture;}pm.dispose();scene.environment=envMap;}catch{envMap=null;}}
+function lacquer(color,rough=.3){const m=new THREE.MeshPhysicalMaterial({color,roughness:rough,metalness:0,clearcoat:1,clearcoatRoughness:.12,envMapIntensity:.3});if(envMap){m.envMap=envMap;m.envMapIntensity=.3;}return m;}
 function shiny(color,metalness=.85,roughness=.26,side=THREE.FrontSide){const m=new THREE.MeshStandardMaterial({color,metalness,roughness,side});if(envMap){m.envMap=envMap;m.envMapIntensity=1;}return m;}
 
 function slab(w,d,h,bevel,mat){ // a moulded slab: rounded-edge box, centred, z from 0 to h
@@ -318,6 +364,89 @@ function updateSleeves(){
   const tgt=sleeveDrag?.jacket===j?sleeveDrag.pose:j.userData.home;
   j.position.lerp(tgt.p,k);j.quaternion.slerp(tgt.q,k);}
 }
+/* ---------- Pick up, turn in your hands, return to the spindle ---------- */
+let heightTex=null,heightWorker=null,heightTimeout=null,heightOwner=null;
+const inspectButton=document.getElementById('inspectRecord');
+function syncInspectUI(){if(!inspectButton)return;inspectButton.disabled=!window.vinyl.record;inspectButton.textContent=inspect.active?'Put record back':'Inspect record';inspectButton.setAttribute('aria-pressed',String(inspect.active));}
+function clearHeightDetail(){heightWorker?.terminate();heightWorker=null;clearTimeout(heightTimeout);heightTex?.dispose();heightTex=null;heightOwner=null;}
+function setDetail(on){
+ const top=disc.getObjectByName('vinyl-grooves'),m=window.vinyl.record?.metadata;if(!top||!m)return;
+ top.geometry.dispose();top.geometry=new THREE.RingGeometry(m.label_radius_mm,R,on?1024:256,on?128:1);
+ const mat=top.material,tex=on?(heightTex||bumpTex):bumpTex;
+ mat.bumpMap=tex;mat.bumpScale=tex?(on&&heightTex?(m.height_polarity==='inverted'?-1:1)*m.height_scale_mm:-1.7):0;
+ mat.displacementMap=on?tex:null;
+ mat.displacementScale=on&&tex?(heightTex?(m.height_polarity==='inverted'?-1:1)*m.height_scale_mm:-.28):0;
+ mat.displacementBias=on&&heightTex?(m.height_polarity==='inverted'?m.height_scale_mm-m.thickness_mm:-m.thickness_mm):0;
+ mat.needsUpdate=true;
+}
+async function requestHeightDetail(){
+ const record=window.vinyl.record;if(heightTex||heightWorker||!record)return;
+ // Bundled demo has only its preview. Never guess/fetch a giant demo height map.
+ const file=record.heightmapFile;if(!file?.arrayBuffer)return;
+ const owner=record;heightOwner=owner;
+ try{
+  const bytes=await file.arrayBuffer();if(!inspect.active||window.vinyl.record!==owner)return;
+  const worker=heightWorker=new Worker(new URL('./inspect-height-worker.js',import.meta.url));
+  const finish=()=>{worker.terminate();if(heightWorker===worker)heightWorker=null;clearTimeout(heightTimeout);};
+  heightTimeout=setTimeout(finish,30000);
+  worker.onmessage=e=>{finish();if(e.data.error||window.vinyl.record!==owner||heightOwner!==owner)return;
+   const {data,width,height}=e.data;const t=new THREE.DataTexture(data,width,height,THREE.RedFormat,THREE.FloatType);t.flipY=true;t.colorSpace=THREE.NoColorSpace;t.minFilter=t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;t.needsUpdate=true;heightTex=t;
+   if(inspect.active)setDetail(true);
+  };worker.onerror=finish;worker.postMessage(bytes,[bytes]);
+ }catch{heightWorker?.terminate();heightWorker=null;} // preview remains a working fallback
+}
+function beginInspection(){
+ const v=window.vinyl;if(!v.record||inspect.active||!disc.getObjectByName('vinyl-grooves'))return;
+ v.setInspecting(true);drag=false;armHold=null;sleeveDrag=null;
+ inspect.active=true;inspect.phase='out';inspect.elapsed=0;inspect.drag=null;
+ inspect.from=disc.position.clone();inspect.qFrom=disc.quaternion.clone();inspect.cameraFrom=camera.position.clone();inspect.targetFrom=controls.target.clone();
+ inspect.held=new THREE.Vector3(-R*.35,-R*2.8,R*1.6);
+ inspect.eye=inspect.held.clone().add(new THREE.Vector3(R*.15,-R*2.9,R*1.7));
+ inspect.qHeld=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),inspect.eye.clone().sub(inspect.held).normalize());
+ inspect.qHeld.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),.48));
+ loosenInspectCamera();controls.enabled=false;setDetail(true);requestHeightDetail();inspectRake.visible=inspectSoft.visible=true;syncInspectUI();
+}
+function loosenInspectCamera(){
+ controls.minAzimuthAngle=-Infinity;controls.maxAzimuthAngle=Infinity;controls.minPolarAngle=.02;controls.maxPolarAngle=Math.PI-.02;
+ controls.minDistance=R*.65;controls.maxDistance=R*5;controls.enablePan=true;controls.zoomToCursor=true;controls.enabled=true;controls.update();
+}
+function returnRecord(){
+ if(!inspect.active||inspect.phase==='back')return;
+ inspect.phase='back';inspect.elapsed=0;inspect.drag=null;inspect.from=disc.position.clone();inspect.qFrom=disc.quaternion.clone();inspect.cameraFrom=camera.position.clone();inspect.targetFrom=controls.target.clone();controls.enabled=false;
+}
+function finishInspection(replacing=false){
+ if(!inspect.active)return;
+ inspect.active=false;inspect.phase='idle';inspect.drag=null;disc.position.set(0,0,0);disc.rotation.set(0,0,window.vinyl.state.rotation);inspectRake.visible=inspectSoft.visible=false;controls.enabled=true;
+ if(!replacing)setDetail(false);
+ window.vinyl.setInspecting(false);syncInspectUI();resetView();
+}
+const ease=t=>t*t*(3-2*t);
+function updateInspection(dt){
+ if(!inspect.active)return;
+ if(inspect.phase!=='held'){
+  const reduce=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  inspect.elapsed+=dt;const t=reduce?1:Math.min(1,inspect.elapsed/.65),a=ease(Math.min(1,t/.28)),b=ease(Math.max(0,(t-.28)/.72));
+  const lifted=new THREE.Vector3(0,0,R*.85);
+  if(inspect.phase==='out'){
+   disc.position.lerpVectors(inspect.from,lifted,a);if(t>.28)disc.position.lerpVectors(lifted,inspect.held,b);
+   disc.quaternion.slerpQuaternions(inspect.qFrom,inspect.qHeld,b);
+   camera.position.lerpVectors(inspect.cameraFrom,inspect.eye,ease(t));controls.target.lerpVectors(inspect.targetFrom,inspect.held,ease(t));
+   if(t===1){inspect.phase='held';loosenInspectCamera();}
+  }else{
+   const a=ease(Math.min(1,t/.72)),b=ease(Math.max(0,(t-.72)/.28));disc.position.lerpVectors(inspect.from,lifted,a);if(t>.72)disc.position.lerpVectors(lifted,new THREE.Vector3(),b);
+   disc.quaternion.slerpQuaternions(inspect.qFrom,new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),window.vinyl.state.rotation),a);
+   camera.position.lerpVectors(inspect.cameraFrom,new THREE.Vector3(R*1.02,-R*6,R*2.35),ease(t));controls.target.lerpVectors(inspect.targetFrom,new THREE.Vector3(-R*.4,R*.25,R*.42),ease(t));
+   if(t===1){finishInspection();return;}
+  }
+  camera.lookAt(controls.target);
+ }
+ // Raking light follows the face, not the camera: turning the vinyl moves highlights.
+ const normal=new THREE.Vector3(0,0,1).applyQuaternion(disc.quaternion),across=new THREE.Vector3(1,0,0).applyQuaternion(disc.quaternion);
+ inspectRake.target.position.copy(disc.position);inspectRake.position.copy(disc.position).addScaledVector(across,R*3).addScaledVector(normal,R*.55);
+ inspectSoft.target.position.copy(disc.position);inspectSoft.position.copy(camera.position).addScaledVector(new THREE.Vector3(1,0,0).transformDirection(camera.matrixWorld),R*1.2);
+}
+inspectButton?.addEventListener('click',()=>inspect.active?returnRecord():beginInspection());
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&inspect.active){e.preventDefault();returnRecord();}});
 let builtFor=0;
 function buildPhonograph(R){
  if(builtFor===R)return;builtFor=R;armL=0;
@@ -367,21 +496,23 @@ function buildPhonograph(R){
  const bead=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rim,true),256,R*.012,8,true),brass);phonograph.add(bead);
  const collar=new THREE.Mesh(new THREE.CylinderGeometry(7,7,8,24),brass);collar.rotation.x=Math.PI/2;collar.position.set(px,py,HINGE_Z+6);phonograph.add(collar);
  // table level (underside of the plinth) and the dashboard hula girl
- tableZ=bodyBot-plA-plB;cabW=W;cabD=D;
+ tableZ=bodyBot-plA-plB;cabW=W;cabD=D;room.position.z=tableZ;
  phonograph.add(buildHula(R,top,W,D));
+ phonograph.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
 }
-buildPhonograph(R);
+buildPhonograph(R);bakeRoomEnvironment();
 addPlaceholder();resetView();
-window.addEventListener('vinyl-record',e=>{const record=e.detail;version++;const v=version;clearDisc();const oldR=R;R=record.metadata.disc_radius_mm;buildPhonograph(R);if(oldR!==R)buildSleeves();
- resetView();tonearm.visible=true;armHold=null;
+function mountRecord(record){version++;const v=version;finishInspection(true);clearDisc();clearHeightDetail();bumpTex?.dispose();bumpTex=null;
+ const oldR=R;R=record.metadata.disc_radius_mm;buildPhonograph(R);if(oldR!==R)buildSleeves();
+ resetView();tonearm.visible=true;armHold=null;buildRecord(record.metadata,record.label);syncInspectUI();
  loadBump(record.previewUrl||record.base+'preview.png',texture=>{
-  if(v!==version)return;
-  const geo=new THREE.RingGeometry(record.metadata.label_radius_mm,R,256);
-  disc.add(new THREE.Mesh(geo,vinylMaterial(texture)));
-  disc.children[0].position.z=record.metadata.thickness_mm;
-  addLabel(record.metadata);
+  if(v!==version){texture?.dispose();return;}
+  bumpTex=texture;const top=disc.getObjectByName('vinyl-grooves');if(!top)return;
+  top.material.bumpMap=texture;top.material.bumpScale=texture?-1.7:0;top.material.needsUpdate=true;
+  if(inspect.active)setDetail(true);
  });
-});
+}
+window.addEventListener('vinyl-record',e=>mountRecord(e.detail));
 function setRay(event){const b=renderer.domElement.getBoundingClientRect();pointer.set((event.clientX-b.left)/b.width*2-1,-(event.clientY-b.top)/b.height*2+1);ray.setFromCamera(pointer,camera);}
 function hitPlane(event,z){setRay(event);const p=new THREE.Vector3();return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-z),p)?p:null;}
 function hit(event){return hitPlane(event,window.vinyl.record?.metadata.thickness_mm||2.5);}
@@ -397,20 +528,33 @@ function pickAt(e){
  return null;
 }
 renderer.domElement.addEventListener('pointerdown',e=>{
- if(e.button!==0)return;const v=window.vinyl;const p0=pickAt(e);
+ if(e.button!==0)return;const v=window.vinyl;
+ if(inspect.active){
+  if(inspect.phase!=='held')return;setRay(e);
+  if(ray.intersectObject(disc,true).length){inspect.drag={x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture?.(e.pointerId);}
+  else{const p=hitPlane(e,0);if(p&&Math.hypot(p.x,p.y)<R*1.05)returnRecord();}
+  return;
+ }
+ const p0=pickAt(e);
  if(p0){
   renderer.domElement.setPointerCapture?.(e.pointerId);
   if(p0.kind==='arm'){const up=!v.down||v.state.grabbed;armHold={x:e.clientX,y:e.clientY,start:up?1:0,value:up?1:0,moved:false};return;}
   if(p0.kind==='sleeve'){const j=p0.obj;const hz=(v.record?.metadata.thickness_mm||2.5)+R*.35;const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI/2+.18,0,0));
    sleeveDrag={jacket:j,id:j.userData.sleeveId,z:hz,pose:{p:j.position.clone(),q},over:false};moveSleeve(e);return;}
  }
- if(!v.record)return;const p=hit(e);if(!p||Math.hypot(p.x,p.y)>R+1)return;drag=true;renderer.domElement.setPointerCapture(e.pointerId);v.grabStart(p.x,p.y);
+ if(!v.record)return;const p=hit(e);if(!p||Math.hypot(p.x,p.y)>R+1)return;if(!v.down){beginInspection();return;}drag=true;renderer.domElement.setPointerCapture(e.pointerId);v.grabStart(p.x,p.y);
 });
 function moveSleeve(e){const p=hitPlane(e,sleeveDrag.z);if(!p)return;const S=2*R*1.04;
  // jacket centre follows the pointer, lying cover-up over the table
  sleeveDrag.pose.p.set(p.x,p.y-S/2*Math.cos(.18),sleeveDrag.z-S/2*Math.sin(.18));sleeveDrag.over=Math.hypot(p.x,p.y)<R*1.05;sleeveDrag.center=p;}
 renderer.domElement.addEventListener('pointermove',e=>{
  const v=window.vinyl;
+ if(inspect.active){if(inspect.drag&&inspect.phase==='held'){
+  const dx=e.clientX-inspect.drag.x,dy=e.clientY-inspect.drag.y;inspect.drag={x:e.clientX,y:e.clientY};
+  const right=new THREE.Vector3(1,0,0).transformDirection(camera.matrixWorld),up=new THREE.Vector3(0,1,0).transformDirection(camera.matrixWorld);
+  disc.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(up,dx*.008)).premultiply(new THREE.Quaternion().setFromAxisAngle(right,dy*.008));
+ }return;}
+
  if(armHold){const dy=e.clientY-armHold.y;if(Math.abs(dy)>4||Math.abs(e.clientX-armHold.x)>4)armHold.moved=true;armHold.value=Math.max(0,Math.min(1,armHold.start-dy/90));
   // the arm is the switch: raise it off the record to stop, lower it onto the record to play
   if(armHold.moved){if(armHold.value>.6&&v.down&&!v.state.grabbed)v.lift();else if(armHold.value<.15&&!v.down)v.drop()?.catch?.(()=>{});}
@@ -419,6 +563,7 @@ renderer.domElement.addEventListener('pointermove',e=>{
  if(!drag)return;const p=hit(e);if(p)v.grabMove(p.x,p.y);
 });
 function endPointer(e,cancel=false){
+ if(inspect.active){inspect.drag=null;return true;}
  const v=window.vinyl;
  if(armHold){const h=armHold;armHold=null;
   if(!cancel){if(!h.moved){if(v.down&&!v.state.grabbed)v.lift();else v.drop()?.catch?.(()=>{});}
@@ -428,6 +573,7 @@ function endPointer(e,cancel=false){
  return false;
 }
 renderer.domElement.addEventListener('pointerup',e=>{if(e.button!==0)return;if(endPointer(e))return;if(drag){drag=false;window.vinyl.grabEnd();}});
+renderer.domElement.addEventListener('dblclick',e=>{if(e.button!==0||!window.vinyl.record)return;setRay(e);if(ray.intersectObject(disc,true).length){if(inspect.active){if(inspect.phase==='held')returnRecord();}else beginInspection();}});
 renderer.domElement.addEventListener('pointercancel',e=>{if(endPointer(e,true))return;if(drag){drag=false;window.vinyl.grabEnd();}});
 function resize(){const w=view.clientWidth,h=view.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}new ResizeObserver(resize).observe(view);resize();
 function loudness(v,t){
@@ -446,7 +592,11 @@ function updateAudioListener(){
  audioReset.set(R*1.02,-R*6.0,R*2.35);
  window.vinyl.setListener(audioPosition,audioForward,audioUp,audioMouth,audioReset.distanceTo(audioMouth));
 }
-function frame(){requestAnimationFrame(frame);const v=window.vinyl,r=v.record;let energy=0;if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed) v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();disc.rotation.z=v.state.rotation;
+// The demo may finish loading while Three.js/room modules are still downloading.
+if(window.vinyl.record)mountRecord(window.vinyl.record);
+sleeveData=window.vinyl.sleeves?.()||sleeveData;buildSleeves();syncInspectUI();
+let lastFrame=performance.now();
+function frame(){requestAnimationFrame(frame);const v=window.vinyl,r=v.record;let energy=0;if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed) v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active)disc.rotation.z=v.state.rotation;
  let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
  const rad=m.r_start_mm-m.pitch_mm*th/(2*Math.PI)+m.amp_mm*d;
  const tipZ=armHold?m.thickness_mm-.25+armHold.value*13.25:m.thickness_mm+(v.down?-.25:13);
@@ -454,4 +604,5 @@ function frame(){requestAnimationFrame(frame);const v=window.vinyl,r=v.record;le
  energy=loudness(v,t);
  }else tonearm.visible=false;
  updateHula(energy);updateSleeves();
+ const now=performance.now(),dt=Math.min(.05,Math.max(.001,(now-lastFrame)/1000));lastFrame=now;updateInspection(dt);
  controls.update();updateAudioListener();renderer.render(scene,camera);}frame();

@@ -6,7 +6,7 @@
 (() => {
 const $=id=>document.getElementById(id);
 let record=null, ctx=null, buffer=null, vectorBuffer=null, pngBuffer=null, reverseBuffer=null, source=null, gain=null, panner=null, down=false;
-let position=0, audioAnchor=0, rpm=45, busy=false;
+let position=0, audioAnchor=0, rpm=45, busy=false, inspecting=false;
 let lastGrabAngle=0, lastGrabTime=0, scratchUsingReverse=false, scratchStart=0, scratchAbsRate=0;
 const state={angle:Math.PI*.2,rotation:0,dragging:false,grabbed:false};
 
@@ -57,7 +57,7 @@ function reversed(){
  return reverseBuffer;
 }
 async function drop(t=position){
- if(!record||!buffer||state.grabbed)return; await ensureAudio();silence();
+ if(!record||!buffer||state.grabbed||inspecting)return; await ensureAudio();if(inspecting)return;silence();
  position=clampTime(t);
  source=ctx.createBufferSource();source.buffer=buffer;source.playbackRate.value=rpm/record.metadata.rpm_cut;source.connect(gain);
  audioAnchor=ctx.currentTime;down=true;source.start(0,position);
@@ -110,7 +110,7 @@ function seekToXY(x,y){
 }
 function wrapAngle(d){while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;return d;}
 function grabStart(x,y){
- if(!record)return;
+ if(!record||inspecting)return;
  const r=Math.hypot(x,y),m=record.metadata;
  if(r>m.disc_radius_mm+1)return;
  position=time();silence();ensureAudio();
@@ -165,7 +165,7 @@ async function request(url,body){
 }
 function enableControls(){
  $('open').disabled=false;$('resetView').disabled=false;
- for(const id of ['needle','seek','rpm'])$(id).disabled=!record;
+ for(const id of ['needle','seek','rpm'])$(id).disabled=!record||(id==='needle'&&inspecting);
  $('volume').disabled=false;
  for(const r of document.querySelectorAll('input[name=rpmPreset]'))r.disabled=!record;
  const both=!!(record&&vectorBuffer&&pngBuffer);
@@ -184,9 +184,10 @@ function sleeveList(){
 function emitSleeves(){window.dispatchEvent(new CustomEvent('vinyl-sleeves',{detail:{current:currentId,count:library.size,sleeves:sleeveList()}}));}
 function factsFor(m){return `${Math.round(m.disc_radius_mm*2)} mm · cut at ${m.rpm_cut<40?'33⅓':Math.round(m.rpm_cut)} RPM · ${clock(m.duration_sec)}`;}
 function mount(entry,message){
+ inspecting=false;
  silence();down=false;state.grabbed=false;state.dragging=false;scratchAbsRate=0;
  const prev=currentId?library.get(currentId):null;if(prev)prev.used=++useCounter; // previous record goes back into its sleeve, front of the pile
- record=entry.data;pngBuffer=entry.pngBuffer;vectorBuffer=entry.vectorBuffer;buffer=null;reverseBuffer=null;currentId=entry.id;entry.used=++useCounter;
+ record=entry.data;record.label=entry.label;pngBuffer=entry.pngBuffer;vectorBuffer=entry.vectorBuffer;buffer=null;reverseBuffer=null;currentId=entry.id;entry.used=++useCounter;
  position=0;state.rotation=0;
  rpm=record.metadata.rpm_cut;$('rpm').value=rpm;$('rpmValue').textContent=rpm.toFixed(1);presetFor(rpm);
  $('metadata').textContent=JSON.stringify(record.metadata,null,2);
@@ -248,9 +249,9 @@ function openFiles(list){return task(async()=>{
  const {png,vector,json}=classify([...list]);
  lift();status(vector?'Opening the record and its groove master…':'Opening the record…','busy');
  const label=png.name.replace(/\.png$/i,'');
- if(!(await localApi())){await load(await importInBrowser({png,vector,json}),label);return;}
+ if(!(await localApi())){const data=await importInBrowser({png,vector,json});data.heightmapFile=png;await load(data,label);return;}
  const data=new FormData();data.append('file',png);if(vector)data.append('vector',vector);if(json)data.append('metadata',json);
- await load(await request('/api/import',data),label);
+ const opened=await request('/api/import',data);opened.heightmapFile=png;await load(opened,label);
 });}
 $('open').onclick=()=>$('recordFile').click();
 $('recordFile').onchange=e=>{if(e.target.files.length)openFiles(e.target.files);e.target.value='';};
@@ -272,6 +273,7 @@ $('volume').oninput=e=>setVolume(e.target.value);
 window.vinyl={get record(){return record;},get state(){return state;},get down(){return down;},get buffer(){return buffer;},time,lift,drop,grabStart,grabMove,grabEnd,grabTick,setListener,
  place(x,y,release=false){if(!record)return;if(release){grabEnd();return;}grabStart(x,y);},
  // cabinet-as-UI setters (the 3D dials call these; the HTML controls share the same paths)
+ get inspecting(){return inspecting;},setInspecting(value){if(value&&!inspecting)lift();inspecting=!!value;enableControls();status(inspecting?'Inspecting the record — drag to turn, scroll to study; double-click or press Esc to put it back.':'Record back on the spindle. Needle lifted.');},
  get volume(){return Number($('volume').value);},setVolume,
  get rpm(){return rpm;},setSpeed(v){if(!record)return;speed(v);},
  get sources(){return {vector:!!vectorBuffer,png:!!pngBuffer,both:!!(record&&vectorBuffer&&pngBuffer)};},
