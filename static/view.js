@@ -12,8 +12,7 @@ import {createPost} from './post.js';
    reset it; only Reset view does, and every move is eased. */
 const view=document.getElementById('view');
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x1b1611);
-const isFilm=()=>typeof URLSearchParams!=='undefined'&&typeof location!=='undefined'&&new URLSearchParams(location.search).has('film');
-const reduce=()=>isFilm()?false:!!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+const reduce=()=>!!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 let renderer;
 try{renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});}
 catch(e){const p=document.getElementById('viewFallback');if(p)p.textContent='The 3D turntable needs WebGL, which this browser has turned off. Playback still works from the controls.';throw e;}
@@ -94,7 +93,7 @@ function keepInRoom(){
  if(c.x<-b.x||c.x>b.x||c.y<b.y0||c.y>b.y1||c.z>b.z1||c.z<b.z0)c.copy(roomSafe);
  camera.lookAt(t);return true;
 }
-const keepBelowCeiling=keepInRoom; // older callers / film API
+const keepBelowCeiling=keepInRoom; // alias kept for older callers
 function resetView(){
  if(inspect.active){returnRecord();return;}
  machineClamps();const d=defaultPose();flyTo(d.pos,d.target,.9);
@@ -702,23 +701,12 @@ function beginInspection(){
  inspect.active=true;inspect.phase='out';inspect.elapsed=0;inspect.drag=null;
  inspect.saved={pos:camTween?camTween.p1.clone():camera.position.clone(),target:camTween?camTween.t1.clone():controls.target.clone()};
  inspect.from=disc.position.clone();inspect.qFrom=disc.quaternion.clone();
- // App hold stays close; film hold sits a touch further so the disc doesn't punch into lens.
- const film=typeof FILM!=='undefined'&&FILM;
- inspect.held=film
-  ? new THREE.Vector3(-R*.18,-R*2.2,R*1.4)
-  : new THREE.Vector3(-R*.35,-R*2.8,R*1.6);
- inspect.eye=inspect.held.clone().add(film
-  ? new THREE.Vector3(R*.35,-R*3.7,R*1.65).multiplyScalar(1/Math.sqrt(1.11))
-  : new THREE.Vector3(R*.15,-R*2.9,R*1.7));
+ inspect.held=new THREE.Vector3(-R*.35,-R*2.8,R*1.6);
+ inspect.eye=inspect.held.clone().add(new THREE.Vector3(R*.15,-R*2.9,R*1.7));
  inspect.qHeld=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),inspect.eye.clone().sub(inspect.held).normalize());
  inspect.qHeld.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),.48));
- inspect.inDur=film?3.4:INSPECT_IN; // film: ease the disc in over ~3.4s with the soft cam approach
  controls.enabled=false;
- if(film){
-  // Film director owns the camera — no flyTo punch-zoom competing with filmSetCamera.
- }else{
-  flyTo(inspect.eye,inspect.held,INSPECT_IN,()=>{if(inspect.active&&inspect.phase==='out'){inspect.phase='held';loosenInspectCamera();}});
- }
+ flyTo(inspect.eye,inspect.held,INSPECT_IN,()=>{if(inspect.active&&inspect.phase==='out'){inspect.phase='held';loosenInspectCamera();}});
  setDetail(true);requestHeightDetail();syncInspectUI();invalidate();
 }
 function loosenInspectCamera(){
@@ -728,7 +716,7 @@ function loosenInspectCamera(){
 function returnRecord(){
  if(!inspect.active||inspect.phase==='back')return;
  inspect.phase='back';inspect.elapsed=0;inspect.drag=null;inspect.from=disc.position.clone();inspect.qFrom=disc.quaternion.clone();controls.enabled=false;
- if(!(typeof FILM!=='undefined'&&FILM)){const back=inspect.saved||defaultPose();flyTo(back.pos,back.target,INSPECT_OUT);}
+ {const back=inspect.saved||defaultPose();flyTo(back.pos,back.target,INSPECT_OUT);}
  invalidate();
 }
 function finishInspection(replacing=false){
@@ -756,7 +744,7 @@ function updateInspection(dt){
  if(!inspect.active)return false;
  if(inspect.phase!=='held'){
   inspect.elapsed+=dt;
-  const dur=inspect.phase==='out'?(inspect.inDur||INSPECT_IN):INSPECT_OUT,t=reduce()?1:Math.min(1,inspect.elapsed/dur);
+  const dur=inspect.phase==='out'?INSPECT_IN:INSPECT_OUT,t=reduce()?1:Math.min(1,inspect.elapsed/dur);
   // The record leaves the way a hand would take it: slid forward off the spindle,
   // flat and low under the raised arm and the horn bell, and only tilted up to the
   // eye once it is clear of the machine. Putting it back retraces the same path.
@@ -764,7 +752,7 @@ function updateInspection(dt){
   if(inspect.phase==='out'){
    inspectPath(k,disc.position);
    disc.quaternion.slerpQuaternions(inspect.qFrom,inspect.qHeld,smooth(.38,1,k));
-   if(t>=1&&!camTween){inspect.phase='held';if(!(typeof FILM!=='undefined'&&FILM))loosenInspectCamera();}
+   if(t>=1&&!camTween){inspect.phase='held';loosenInspectCamera();}
   }else{
    inspectPath(1-k,disc.position,inspect.from);
    disc.quaternion.slerpQuaternions(inspect.qFrom,flat,smooth(0,.62,k));
@@ -1173,72 +1161,38 @@ function signature(){
  return c.x*1.31+c.y*1.73+c.z*2.11+t.x*.37+t.y*.53+t.z*.71+disc.rotation.z*997+p.x*3.1+p.y*3.7+p.z*4.3+q.x*41+q.y*43+
   armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(tonearm.visible?1:0)+outgoing.children.length*13;
 }
-const FILM=isFilm();
-let filmRunning=false, filmNow=0;
 function tickScene(dt, nowMs){
  const v=window.vinyl,r=v&&v.record;let energy=0;
  frameDt=dt;
- if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed&&!FILM)v.grabTick();if(!inspect.active&&!dropIn)disc.rotation.z=v.state.rotation;
-  // While film-scratching, spin the disc with the instantaneous rate relative to cut RPM.
-  if(FILM&&v.state.grabbed){disc.rotation.z+=(v.film?.rate||0)*m.rpm_cut/60*dt*Math.PI*2;v.state.rotation=disc.rotation.z;}
+ if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active&&!dropIn)disc.rotation.z=v.state.rotation;
   let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
   const rad=m.r_start_mm-m.pitch_mm*th/(2*Math.PI)+m.amp_mm*d;
   const moving=inspect.active||dropIn||outgoing.children.length;
   const tipZ=armHold?m.thickness_mm-.25+armHold.value*13.25:m.thickness_mm+(moving?24:v.down?-.25:13);
   placeTonearm(rad*Math.cos(v.state.angle),rad*Math.sin(v.state.angle),tipZ,v.down);
-  // Film: drive the hula from the same deterministic groove loudness as live playback.
   energy=loudness(v,t);
  }else tonearm.visible=false;
  updateHula(energy);
  const why=[];
  if(updateSleeves(dt))why.push('sleeves');if(updateLathe(dt))why.push('lathe');if(updateInspection(dt))why.push('inspect');if(updateSwap(dt))why.push('swap');
- if(updateCamTween(dt)){zoom.goal=null;zoom.vel=0;why.push('flight');}else{const z=applyZoom(dt);if(!FILM&&(controls.update()||z))why.push('controls');}
+ if(updateCamTween(dt)){zoom.goal=null;zoom.vel=0;why.push('flight');}else{const z=applyZoom(dt);if(controls.update()||z)why.push('controls');}
  if(keepInRoom())why.push('room');
- if(!FILM)updateAudioListener();
+ updateAudioListener();
  const sig=signature();if(!(Math.abs(sig-lastSig)<1e-7)){if(!why.length)why.push('moved:'+(sig-lastSig).toExponential(1));lastSig=sig;}
  let busy=why.length>0;window.vinylView.lastDraw=why.join(',')||(dirty>0?'dirty':'');
  return {busy, why, nowMs};
 }
 function drawFrame(nowMs){
- if(FILM)renderer.shadowMap.needsUpdate=true; else updateShadows(nowMs); // film: fresh shadows every frame (a wall-clock throttle left stale shadows in the opening frames)
+ updateShadows(nowMs);
  post.focus?.(inspect.active?camera.position.distanceTo(disc.position):camera.position.distanceTo(focusPoint.set(R*.15,0,4)));
  post.render(nowMs);if(dirty>0)dirty--;
  if(!firstDrawn){firstDrawn=true;performance.mark?.('vv:first');renderer.domElement.setAttribute?.('data-ready','');}
 }
 function frame(){
- if(FILM){ /* director drives ticks */ if(!firstDrawn){drawFrame(performance.now());} return; }
  requestAnimationFrame(frame);
  const now=performance.now(),raw=Math.max(.001,(now-lastFrame)/1000),dt=Math.min(.25,raw);lastFrame=now;
  const {busy}=tickScene(dt, now);
  if(busy||dirty>0||drag||armHold||sleeveDrag)drawFrame(now);else post.idle();
-}
-function filmStep(dt, draw=true){
- filmNow+=dt*1000;
- const r=tickScene(dt, filmNow);
- dirty=Math.max(dirty,2);
- if(draw)drawFrame(filmNow);
- return r;
-}
-function filmSetCamera(pos, target, fov){
- camTween=null;zoom.goal=null;zoom.vel=0;stopControlMomentum();
- // widen clamps in film so scripted cams aren't fighting OrbitControls limits
- controls.minPolarAngle=0.05;controls.maxPolarAngle=Math.PI*0.49;
- controls.minAzimuthAngle=-Infinity;controls.maxAzimuthAngle=Infinity;
- controls.minDistance=R*0.4;controls.maxDistance=R*12;
- controls.enablePan=true;
- if(fov!=null){camera.fov=fov;camera.updateProjectionMatrix();}
- camera.position.set(pos[0],pos[1],pos[2]);
- controls.target.set(target[0],target[1],target[2]);
- camera.up.set(0,0,1);camera.lookAt(controls.target);
- keepInRoom();
- invalidate(2);
-}
-function filmHideHud(){
- const css=document.createElement('style');css.id='film-hud-hide';
- css.textContent=`body.film-mode .plate-top,body.film-mode #hud,body.film-mode #status,body.film-mode #fault,body.film-mode #help,body.film-mode #tags,body.film-mode #dropHint,body.film-mode .home,body.film-mode .record-card{display:none!important;opacity:0!important;pointer-events:none!important}
- body.film-mode #well,body.film-mode #view,body.film-mode canvas{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;margin:0!important;z-index:1!important}
- body.film-mode{overflow:hidden!important;background:#1b1611!important}`;
- document.head.appendChild(css);document.body.classList.add('film-mode');
 }
 Object.assign(window.vinylView,{
  get camera(){return camera}, get controls(){return controls}, get disc(){return disc},
@@ -1246,7 +1200,7 @@ Object.assign(window.vinylView,{
  get sleevesGroup(){return sleeves}, get THREE(){return THREE},
  setPendingSwap(from,tilt=0){pendingSwapFrom=from?from.clone():null;pendingSwapTilt=tilt;pendingExtract=null;},
  beginInspection, returnRecord, finishInspection, flyTo, snapToDefault, defaultPose, presentPose,
- filmStep, filmSetCamera, filmHideHud, keepBelowCeiling, keepInRoom, armSwapFromSleeve, captureExtract, keepDiscAwayFromCamera, roomBounds,
+ keepBelowCeiling, keepInRoom, armSwapFromSleeve, captureExtract, keepDiscAwayFromCamera, roomBounds,
  jacketWorld(id){const j=sleeves.children.find(o=>o.userData.sleeveId===id);if(!j)return null;scene.updateMatrixWorld(true);const peek=j.userData.peekObj;return peek?peek.getWorldPosition(new THREE.Vector3()):jacketCenter(j.userData.home||sleeveHome(0,1));},
  presentFrom(){const p=presentPose();return jacketCenter(p);},
 });

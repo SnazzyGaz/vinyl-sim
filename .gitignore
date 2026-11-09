@@ -18,3 +18,7 @@ static/style.css
 static/cutter.html
 static/index.html
 static/player.html
+# film / demo tooling lives off-repo (vinyl-film-v2), not in the public app
+static/film-director.js
+demo-*.mjs
+*.mp4
