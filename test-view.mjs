@@ -313,11 +313,17 @@ try {
   {const buf={sampleRate:1000,length:10000,getChannelData(){const a=new Float32Array(10000);for(let i=0;i<a.length;i++)a[i]=Math.sin(i*.3)*.5;return a;}};vinyl.buffer=buf;vinyl.down=true;vinyl.state.grabbed=false;
    const h=context.api.hula;for(let i=0;i<40;i++){tick();}assert.ok(h.env>.1,'loudness envelope follows the audio');let peak=0;for(let i=0;i<60;i++){tick();peak=Math.max(peak,Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz));}assert.ok(peak>.03,'she sways on the spring');
    vinyl.down=false;for(let i=0;i<60;i++)tick();assert.ok(h.env<.05,'needle up: no drive');for(let i=0;i<900;i++)tick();assert.ok(Math.abs(h.ax)+Math.abs(h.ay)+Math.abs(h.bz)<.01,'spring damps back to rest');
-   vinyl.record={label:'Second pressing',metadata:{...metadata,disc_radius_mm:100},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
+   vinyl.record={label:'Second pressing',metadata:{...metadata,disc_radius_mm:100,duration_sec:10,lead_in_turns:.35,lead_out_turns:.5},base:'/unused2/'};win.emit('vinyl-record',{detail:vinyl.record});tick();
    assert.ok(context.api.scene.getObjectByName('outgoing-records').children.length===1,'the old record glides off to the rack');for(let i=0;i<90;i++)tick();
    assert.equal(context.api.scene.getObjectByName('outgoing-records').children.length,0,'and is freed once it arrives');
    assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);assert.equal(disc.getObjectByName('vinyl-label').userData.title,'Second pressing');close(spatial.mouth,new real.Vector3(-20,27,138));assert.ok(Math.abs(spatial.refDistance-camera.position.distanceTo(spatial.mouth))<1e-7);
-   assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');vinyl.buffer=null;}
+   assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');
+   // groove sheen bands: built from this record's own buffer, one texel per turn x 1/64 revolution, mip-filtered
+   {const u=disc.getObjectByName('vinyl-grooves').material.userData.groove,t=u.uBand.value,m=vinyl.record.metadata,T=m.lead_in_turns+m.duration_sec*m.rpm_cut/60+m.lead_out_turns,W=Math.ceil(T);
+    assert.ok(t.isDataTexture,'the record gets its own bands');assert.equal(t.image.width,W);assert.equal(t.image.height,64);assert.equal(u.uBandTurns.value,W);
+    assert.ok(t.generateMipmaps&&t.minFilter===real.LinearMipmapLinearFilter,'mip-filtered: no moire at distance');
+    const row=Array.from(t.image.data.slice(0,W));assert.ok(row.slice(1,W-2).every(v=>v>0),'the music shows on every played turn');assert.equal(row[W-1],0,'the silent lead-out stays glossy');}
+   vinyl.buffer=null;}
   // Needle-up pickup is inspection, never scratch. Playback stays locked until landing.
   {vinyl.down=false;const {inspect}=context.api;const before=placements.length;reset.emit('click');for(let i=0;i<80;i++)tick();
    // the viewer's own seat (orbited away from default) must survive inspection

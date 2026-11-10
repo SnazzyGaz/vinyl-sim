@@ -208,12 +208,13 @@ function clearDisc(){while(disc.children.length){const c=disc.children[0];disc.r
 function grooveUniforms(m){
  const label=m?.label_radius_mm??27,rStart=m?.r_start_mm??(R-4),pitch=m?.pitch_mm??.6;
  const turns=m?(m.lead_in_turns+m.duration_sec*m.rpm_cut/60+m.lead_out_turns):(rStart-label-6)/pitch;
- return {uRStart:{value:rStart},uREnd:{value:Math.max(label+2,rStart-pitch*turns)},uPitch:{value:pitch},uLabel:{value:label}};
+ return {uRStart:{value:rStart},uREnd:{value:Math.max(label+2,rStart-pitch*turns)},uPitch:{value:pitch},uLabel:{value:label},uBand:{value:FLAT},uBandTurns:{value:1}};
 }
 // A flat 1x1 height: the vinyl always has a bump slot, so swapping in the real
 // 16-bit relief for inspection is a uniform change, never a shader recompile.
 const FLAT=new THREE.DataTexture(new Uint8Array([128,128,128,255]),1,1);FLAT.needsUpdate=true;FLAT.userData.shared=true;
 const VINYL_ENV=.32,VINYL_ENV_HELD=.6;
+const GBAND={rough:.9,sheen:1.6,rows:64}; // how strongly the sound's bands show (grooveBands)
 /* The anisotropy frame must be the record's own radial/tangential frame. Three
    builds it from the UVs (a fixed direction painted on the disc), which turns with
    the record and swings the highlight round; replace it in the expanded chunk. */
@@ -240,7 +241,9 @@ function vinylMaterial(m){
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vDisc;varying vec3 vAxX,vAxY;')
    .replace('#include <begin_vertex>','#include <begin_vertex>\nvDisc=position.xy;vAxX=normalMatrix*vec3(1.,0.,0.);vAxY=normalMatrix*vec3(0.,1.,0.);');
   sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
-varying vec2 vDisc;varying vec3 vAxX,vAxY;uniform float uRStart,uREnd,uPitch,uLabel;
+#define GBAND_ROUGH ${GBAND.rough.toFixed(3)}
+#define GBAND_SHEEN ${GBAND.sheen.toFixed(3)}
+varying vec2 vDisc;varying vec3 vAxX,vAxY;uniform float uRStart,uREnd,uPitch,uLabel,uBandTurns;uniform sampler2D uBand;
 // running integral of one groove period's height (V cut over 70% of the pitch, depth .35)
 float gInt(float x){float c=floor(x),f=x-c;return -.1225*c+(f<.35?-.5*f*f:f<.7?.1225-.7*f+.5*f*f:-.1225);}`)
    .replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
@@ -249,7 +252,15 @@ float gInt(float x){float c=floor(x),f=x-c;return -.1225*c+(f<.35?-.5*f*f:f<.7?.
     float gPh=(uRStart-gR)/uPitch,gFw=length(vec2(dFdx(gPh),dFdy(gPh)));
     float runout=smoothstep(uLabel+.8,uLabel+1.6,gR)*(1.-smoothstep(uREnd-.6,uREnd-.2,gR));
     float gLine=runout*(1.-smoothstep(0.,.18,abs(gR-(uLabel+(uREnd-uLabel)*.45))));
-    roughnessFactor*=mix(.42,1.,gMask);roughnessFactor=mix(roughnessFactor,.55,gLine);`)
+    roughnessFactor*=mix(.42,1.,gMask);roughnessFactor=mix(roughnessFactor,.55,gLine);
+    // Sheen bands from the record's own sound (grooveBands): how hard the groove wiggles, per turn and
+    // 1/64 revolution. Loud passages scatter the highlight into a grey sheen, quiet ones and the gaps
+    // between tracks stay mirror-glossy, so the rings read as on a real record. Mip-filtered over the
+    // pixel's own footprint (textureGrad; the angle's wrap taken out of its derivatives): no moire.
+    float gA=-atan(vDisc.y,vDisc.x)*.15915494;vec2 gB=vec2(gPh/uBandTurns,gA),gBx=dFdx(gB),gBy=dFdy(gB);
+    gBx.y-=floor(gBx.y+.5);gBy.y-=floor(gBy.y+.5);
+    float gL=(textureGrad(uBand,gB,gBx,gBy).r-.5)*gMask;
+    roughnessFactor*=1.+GBAND_ROUGH*gL;`)
    .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
     vec2 gDir=vDisc/max(gR,1e-3);vec3 gRadV=vAxX*gDir.x+vAxY*gDir.y;
     vec3 gRad=normalize(gRadV-normal*dot(gRadV,normal));
@@ -267,11 +278,11 @@ float gInt(float x){float c=floor(x),f=x-c;return -.1225*c+(f<.35?-.5*f*f:f<.7?.
     float gW=max(gFw,1e-4),gC=floor(gPh),gX=gPh-gC;
     float gRes=1.-smoothstep(.3,.6,gW);
     float gSlope=(gInt(gX+gW)-2.*gInt(gX)+gInt(gX-gW))/(gW*gW)*gRes;
-    float gLost=.13*(1.-gRes*gRes)*gMask;
+    float gLost=.13*(1.-gRes*gRes)*gMask*(1.+GBAND_SHEEN*gL);
     normal=normalize(normal-gRad*gSlope*.6*gMask);`)
    .replace('#include <lights_physical_fragment>',grooveLightsChunk());
  };
- mat.customProgramCacheKey=()=>'vinyl-grooves-v5';
+ mat.customProgramCacheKey=()=>'vinyl-grooves-v6';
  return mat;
 }
 function pvcMaterial(side=THREE.FrontSide){return new THREE.MeshPhysicalMaterial({color:0x0d0d0e,roughness:.28,metalness:0,ior:1.53,side});}
@@ -1268,6 +1279,34 @@ function signature(){
  return c.x*1.31+c.y*1.73+c.z*2.11+t.x*.37+t.y*.53+t.z*.71+disc.rotation.z*997+p.x*3.1+p.y*3.7+p.z*4.3+q.x*41+q.y*43+
   armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(shiba?shiba.wob.x*313+shiba.wob.y*317+shiba.wob.z*331+(shiba.ripple||0)*337+(shiba.loaded?17:0):0)+toyAnim.t*337+toyAnim.press*347+(toyChoice==='hula'?19:0)+(tonearm.visible?1:0)+outgoing.children.length*13;
 }
+/* Groove sheen bands: the RMS groove slope of the record's own playback, per turn (x) and per 1/64
+   revolution (y), in the spiral's own angle (phi = -atan2(y,x) on the disc, as the relief map).
+   Texel (i,j) is the groove crossing radius i+.5 turns at angle j. Built in slices of a frame
+   (a 3.5-minute record is ~10M samples) once a record's buffer arrives; one R8 texture with mips. */
+let band=null;
+function grooveBands(){
+ const v=window.vinyl,rec=v?.record,buf=v?.buffer,top=disc.getObjectByName('vinyl-grooves'),u=top?.material?.userData?.groove;
+ if(band&&band.rec!==rec){if(band.tex)band.tex.dispose();band=null;}
+ if(!rec||!buf||!u||band?.done)return false;
+ const m=rec.metadata,H=GBAND.rows;
+ if(!band){const T=m.lead_in_turns+m.duration_sec*m.rpm_cut/60+m.lead_out_turns,W=Math.max(1,Math.ceil(T));
+  if(!Number.isFinite(T)||!(buf.length>1)){band={rec,done:true,tex:null};return false;} // nothing to read: the neutral sheen stays
+  band={rec,buf,x:buf.getChannelData(0),sr:buf.sampleRate,W,H,acc:new Float64Array(W*H+H),cnt:new Float64Array(W*H+H),i:1,done:false,tex:null};}
+ const b=band,x=b.x,n=x.length,spT=b.sr*60/(m.rpm_cut*H),lead=m.lead_in_turns*H; // samples per 1/H revolution
+ const stop=Math.min(n,b.i+700000); // ~3 ms a slice
+ while(b.i<stop){const s=Math.floor(lead+b.i/spT),end=Math.min(stop,Math.ceil((s+1-lead)*spT));let a=0;const i0=b.i;
+  for(let i=i0;i<end;i++){const d=x[i]-x[i-1];a+=d*d;}
+  if(s<b.acc.length){b.acc[s]+=a;b.cnt[s]+=end-i0;}b.i=Math.max(end,i0+1);}
+ if(b.i<n)return true;
+ const rms=new Float64Array(b.acc.length);const nz=[];for(let s=0;s<rms.length;s++)if(b.cnt[s]){rms[s]=Math.sqrt(b.acc[s]/b.cnt[s]);if(rms[s]>0)nz.push(rms[s]);}
+ nz.sort((a,c)=>a-c);const ref=nz.length?nz[Math.floor(nz.length*.95)]:1;
+ const data=new Uint8Array(b.W*H);
+ for(let j=0;j<H;j++)for(let i=0;i<b.W;i++){const k=Math.round(i+.5-j/H),s=k*H+j;data[j*b.W+i]=s>=0&&s<rms.length?Math.round(255*Math.min(1,rms[s]/ref)**.7):0;}
+ const t=new THREE.DataTexture(data,b.W,H,THREE.RedFormat,THREE.UnsignedByteType);t.unpackAlignment=1;t.colorSpace=THREE.NoColorSpace;
+ t.wrapS=THREE.ClampToEdgeWrapping;t.wrapT=THREE.RepeatWrapping;t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;
+ t.anisotropy=Math.min(8,renderer.capabilities?.getMaxAnisotropy?.()||1);t.needsUpdate=true;
+ b.tex=t;b.done=true;b.x=null;b.acc=b.cnt=null;u.uBand.value=t;u.uBandTurns.value=b.W;invalidate(2);return false;
+}
 function tickScene(dt, nowMs){
  const v=window.vinyl,r=v&&v.record;let energy=0,music=null;
  frameDt=dt;
@@ -1284,6 +1323,7 @@ function tickScene(dt, nowMs){
  const why=[];
  if(shibaMoving)why.push('shiba');
  if(updateToys(dt))why.push('toy');
+ if(grooveBands())why.push('bands');
  if(updateSleeves(dt))why.push('sleeves');if(updateLathe(dt))why.push('lathe');if(updateInspection(dt))why.push('inspect');if(updateSwap(dt))why.push('swap');
  if(updateCamTween(dt)){zoom.goal=null;zoom.vel=0;why.push('flight');}else{const z=applyZoom(dt);if(controls.update()||z)why.push('controls');}
  if(keepInRoom())why.push('room');
