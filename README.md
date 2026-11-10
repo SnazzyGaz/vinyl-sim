@@ -48,7 +48,7 @@ A toy rides on the cabinet lid and dances to the music. The hula girl is the def
 
 | To | Do this |
 |---|---|
-| Play a record from the crate | Drag its sleeve over the cabinet and let go when the rim glows. In this version (not on the live site yet) you can also click: hover a sleeve to raise it, click to slide the record half out, then click the record again. Esc puts it back. |
+| Play a record from the crate | Drag its sleeve over the cabinet and let go when the rim glows. Or click: hover a sleeve to raise it, click to slide the record half out, then click the record again. Esc puts it back. |
 | Start and stop | Use the **Drop/Lift needle** button or the tonearm. The position slider seeks. |
 | Scratch | While it plays, hold the record and drag round the centre. |
 | Inspect | With the needle up, click the record or use **Inspect record**. Drag to turn it, scroll to look closer, and press Esc to put it back. |
