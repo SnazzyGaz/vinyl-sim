@@ -9,12 +9,18 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
  const png=await core.encodePng({width:4,height:2,colorType:0,bitDepth:16,samples});
  await self.onmessage({data:png});assert.equal(result.width,4);assert.equal(result.height,2);
  assert.equal(result.half,true);assert.ok(result.data instanceof Uint16Array);
+ assert.equal(JSON.stringify(result.mips.map(m=>[m.width,m.height])),"[[2,1],[1,1]]");
+ {const mean=a=>a.reduce((x,y)=>x+y,0)/a.length/65535,s=[...samples];assert.ok(Math.abs(fromHalf(result.mips[0].data[0])-mean([s[0],s[1],s[4],s[5]]))<1e-3);assert.ok(Math.abs(fromHalf(result.mips[1].data[0])-mean(s))<1e-3);}
  for(let i=0;i<samples.length;i++){const v=samples[i]/65535;assert.ok(Math.abs(fromHalf(result.data[i])-v)<=Math.max(v,6e-5)*2**-11+1e-9,'half-float keeps 11-bit relative precision');}
  // A 4096 map is box-filtered to 2048 (average of each 2x2), not point-sampled.
  const big=new Uint16Array(4096*4096);for(let y=0;y<4096;y++)for(let x=0;x<4096;x++)big[y*4096+x]=((x+y)&1)?60000:20000;
  await self.onmessage({data:await core.encodePng({width:4096,height:4096,colorType:0,bitDepth:16,samples:big})});
  assert.equal(result.width,2048);assert.ok(Math.abs(fromHalf(result.data[12345])-40000/65535)<1e-3,'2x2 average');
+ // ...with a full mip chain down to 1x1 (2x2 averages), so a receding disc is filtered, not aliased
+ assert.equal(result.mips.length,11);assert.equal(result.mips.map(m=>m.width).join(),"1024,512,256,128,64,32,16,8,4,2,1");
+ assert.ok(result.mips.every(m=>m.data instanceof Uint16Array&&m.data.length===m.width*m.height));
+ assert.ok(Math.abs(fromHalf(result.mips[10].data[0])-40000/65535)<1e-3,'1x1 level is the mean');
  const preview=await core.encodePng({width:1,height:1,colorType:2,bitDepth:8,data:new Uint8Array([30,30,30])});
  await self.onmessage({data:preview});assert.match(result.error,/16-bit/);
- console.log('PASS: inspection worker keeps 16-bit relief as half floats, box-filters 4096 maps to 2048, rejects an RGB preview.');
+ console.log('PASS: inspection worker keeps 16-bit relief as half floats, box-filters 4096 maps to 2048 with a full 2x2-averaged mip chain, rejects an RGB preview.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

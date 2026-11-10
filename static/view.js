@@ -221,7 +221,8 @@ let grooveChunk=null;
 function grooveLightsChunk(){
  if(grooveChunk)return grooveChunk;
  let c=THREE.ShaderChunk.lights_physical_fragment;
- const swaps=[['material.anisotropy = length( anisotropyV );','material.anisotropy = length( anisotropyV )*mix(.22,1.,gMask);'],
+ const swaps=[['material.anisotropy = length( anisotropyV );','material.anisotropy = length( anisotropyV )*mix(.22,1.,gMask);material.anisotropy = sqrt( min( .9, material.anisotropy*material.anisotropy+gLost ) );'],
+  ['material.roughness = min( material.roughness, 1.0 );','material.roughness = sqrt( min( 1.0, pow2( material.roughness )+gKern ) );'],
   ['material.anisotropyT = tbn[ 0 ] * anisotropyV.x + tbn[ 1 ] * anisotropyV.y;','material.anisotropyT = gRad;'],
   ['material.anisotropyB = tbn[ 1 ] * anisotropyV.x - tbn[ 0 ] * anisotropyV.y;','material.anisotropyB = normalize( cross( normal, gRad ) );']];
  for(const [from,to] of swaps){if(!c.includes(from))console.warn('vinyl shader: anisotropy hook not found',from);c=c.replace(from,to);}
@@ -238,28 +239,39 @@ function vinylMaterial(m){
   // them, so the highlight is exactly radial at every angle and stays put as it spins.
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vDisc;varying vec3 vAxX,vAxY;')
    .replace('#include <begin_vertex>','#include <begin_vertex>\nvDisc=position.xy;vAxX=normalMatrix*vec3(1.,0.,0.);vAxY=normalMatrix*vec3(0.,1.,0.);');
-  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vDisc;varying vec3 vAxX,vAxY;uniform float uRStart,uREnd,uPitch,uLabel;')
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec2 vDisc;varying vec3 vAxX,vAxY;uniform float uRStart,uREnd,uPitch,uLabel;
+// running integral of one groove period's height (V cut over 70% of the pitch, depth .35)
+float gInt(float x){float c=floor(x),f=x-c;return -.1225*c+(f<.35?-.5*f*f:f<.7?.1225-.7*f+.5*f*f:-.1225);}`)
    .replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
     float gR=length(vDisc);
     float gMask=smoothstep(uREnd-.25,uREnd+.25,gR)*(1.-smoothstep(uRStart-.1,uRStart+.5,gR));
-    float gPh=(uRStart-gR)/uPitch,gFw=fwidth(gPh);
+    float gPh=(uRStart-gR)/uPitch,gFw=length(vec2(dFdx(gPh),dFdy(gPh)));
     float runout=smoothstep(uLabel+.8,uLabel+1.6,gR)*(1.-smoothstep(uREnd-.6,uREnd-.2,gR));
     float gLine=runout*(1.-smoothstep(0.,.18,abs(gR-(uLabel+(uREnd-uLabel)*.45))));
     roughnessFactor*=mix(.42,1.,gMask);roughnessFactor=mix(roughnessFactor,.55,gLine);`)
    .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
     vec2 gDir=vDisc/max(gR,1e-3);vec3 gRadV=vAxX*gDir.x+vAxY*gDir.y;
     vec3 gRad=normalize(gRadV-normal*dot(gRadV,normal));
-    // V-cut groove (70% of the pitch) between flat lands. The wall slope is box-filtered
-    // over this pixel's footprint (difference of the height profile), so close up each
-    // wall catches the light as a crisp ring, and further away it averages out on its own
-    // into the anisotropic sheen: no shimmer, no hard fade.
-    float gW=max(gFw,1e-4),gA=gPh+.5*gW,gB=gPh-.5*gW;
-    float gHa=-min(fract(gA),max(.7-fract(gA),0.))*step(fract(gA),.7),gHb=-min(fract(gB),max(.7-fract(gB),0.))*step(fract(gB),.7);
-    float gSlope=(gHa-gHb)/gW*clamp(1.4-gW,0.,1.);
+    // Specular AA for the relief bump: where a pixel spans more than a texel of it, how
+    // fast its normal turns across the pixel becomes extra roughness (Kaplanyan-Hoffman),
+    // so sub-pixel relief turns to sheen; close up (texels bigger than pixels) it stays crisp.
+    vec3 gNx=dFdx(normal),gNy=dFdy(normal);vec2 gTx=vec2(textureSize(bumpMap,0));
+    float gTexel=max(length(dFdx(vBumpMapUv)*gTx),length(dFdy(vBumpMapUv)*gTx));
+    float gKern=min(.5*(dot(gNx,gNx)+dot(gNy,gNy)),.12)*smoothstep(1.,3.,gTexel);
+    // V-cut groove (70% of the pitch) between flat lands. Its wall slope is tent-filtered
+    // over this pixel's footprint (second difference of the profile's running integral),
+    // so close up each wall still catches the light as a crisp ring. Rings faded out
+    // before they reach the pixel spacing, where any filter here would alias into moire;
+    // the slope they lose widens the radial highlight instead: the averaged groove sheen.
+    float gW=max(gFw,1e-4),gC=floor(gPh),gX=gPh-gC;
+    float gRes=1.-smoothstep(.3,.6,gW);
+    float gSlope=(gInt(gX+gW)-2.*gInt(gX)+gInt(gX-gW))/(gW*gW)*gRes;
+    float gLost=.13*(1.-gRes*gRes)*gMask;
     normal=normalize(normal-gRad*gSlope*.6*gMask);`)
    .replace('#include <lights_physical_fragment>',grooveLightsChunk());
  };
- mat.customProgramCacheKey=()=>'vinyl-grooves-v4';
+ mat.customProgramCacheKey=()=>'vinyl-grooves-v5';
  return mat;
 }
 function pvcMaterial(side=THREE.FrontSide){return new THREE.MeshPhysicalMaterial({color:0x0d0d0e,roughness:.28,metalness:0,ior:1.53,side});}
@@ -762,7 +774,11 @@ async function requestHeightDetail(){
   const finish=()=>{worker.terminate();if(heightWorker===worker)heightWorker=null;clearTimeout(heightTimeout);};
   heightTimeout=setTimeout(finish,30000);
   worker.onmessage=e=>{finish();if(e.data.error||window.vinyl.record!==owner||heightOwner!==owner)return;
-   const {data,width,height,half}=e.data;const t=new THREE.DataTexture(data,width,height,THREE.RedFormat,half?THREE.HalfFloatType:THREE.FloatType);t.flipY=true;t.colorSpace=THREE.NoColorSpace;t.minFilter=t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;t.needsUpdate=true;heightTex=t;
+   const {data,width,height,half,mips}=e.data;const t=new THREE.DataTexture(data,width,height,THREE.RedFormat,half?THREE.HalfFloatType:THREE.FloatType);t.flipY=true;t.colorSpace=THREE.NoColorSpace;
+   // trilinear + anisotropic over the worker's mip chain: the relief is averaged over
+   // each pixel's footprint as the disc recedes or tilts, never point-sampled
+   if(mips?.length){t.mipmaps=[{data,width,height},...mips];t.minFilter=THREE.LinearMipmapLinearFilter;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy?.()||1);}else t.minFilter=THREE.LinearFilter;
+   t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;t.needsUpdate=true;heightTex=t;
    if(inspect.active)setDetail(true);
   };worker.onerror=finish;worker.postMessage(bytes,[bytes]);
  }catch{heightWorker?.terminate();heightWorker=null;}
