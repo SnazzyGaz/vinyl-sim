@@ -49,11 +49,11 @@
       </div>
 
       <div class="plate needle-plate">
-        <button id="needle" class="btn brass" type="button" disabled aria-pressed="false">Drop needle</button>
+        <button id="needle" class="btn brass" type="button" disabled aria-pressed="false"><span class="stack"><span class="now">Drop needle</span><span aria-hidden="true">Lift needle</span><span aria-hidden="true">Drop needle</span></span></button>
         <div class="indicator on-black" role="group" aria-label="Needle">
           <span class="lamp" id="lamp" data-state="off" aria-hidden="true"></span>
           <div class="readout">
-            <span id="needleState" class="state">Needle lifted</span>
+            <span class="state stack"><span id="needleState">Needle lifted</span><span aria-hidden="true">Needle down — playing</span><span aria-hidden="true">Needle lifted — silent</span><span aria-hidden="true">Hold — record stopped</span><span aria-hidden="true">Hold — scratching</span></span>
             <span class="sub"><span id="clock" class="figures">0:00.0 / 0:00.0</span><span aria-hidden="true"> · </span><span id="needleSource">No record</span></span>
           </div>
         </div>

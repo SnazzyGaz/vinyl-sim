@@ -110,3 +110,8 @@ body[data-drag] .drop-hint{display:flex}
 @media (max-width:1640px){.readout .state{display:none}}
 @media (max-width:1400px){#resetView{display:none}}
 @media (max-width:1180px){.hud{flex-wrap:wrap}.status{bottom:auto;top:64px}.tags{bottom:auto;top:100px}}
+/* fixed-size readouts: every wording a label can take sits in the same grid cell (the spares
+   hidden), so the cell is always as wide as the longest and the bar never re-flows as it changes */
+.stack{display:inline-grid;justify-items:start}.stack>*{grid-area:1/1}.stack>[aria-hidden]{visibility:hidden}
+button .stack{justify-items:center}
+#clock{display:inline-block}

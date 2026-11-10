@@ -58,3 +58,8 @@ body[data-record="open"] .invite{opacity:0;visibility:hidden}
 /* the canvas fades in once the first frame is drawn */
 #view canvas{opacity:0;transition:opacity 420ms var(--ease)}
 #view canvas[data-ready]{opacity:1}
+/* fixed-size readouts: every wording a label can take sits in the same grid cell (the spares
+   hidden), so the cell is always as wide as the longest and the bar never re-flows as it changes */
+.stack{display:inline-grid;justify-items:start}.stack>*{grid-area:1/1}.stack>[aria-hidden]{visibility:hidden}
+button .stack{justify-items:center}
+#clock{display:inline-block}

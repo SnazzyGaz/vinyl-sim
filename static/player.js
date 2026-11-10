@@ -8,6 +8,10 @@ const $=id=>document.getElementById(id);
 let record=null, ctx=null, buffer=null, vectorBuffer=null, pngBuffer=null, reverseBuffer=null, source=null, gain=null, panner=null, down=false;
 let position=0, audioAnchor=0, rpm=45, busy=false, inspecting=false;
 let lastGrabAngle=0, lastGrabTime=0, scratchUsingReverse=false, scratchStart=0, scratchAbsRate=0;
+/* The readout's scratch wording is cosmetic and lags on purpose: a hand on the record shows
+   "scratching" until it has been still for SCRATCH_SETTLE_MS, so the brief pauses and reversals
+   inside one scratch don't flash "record stopped". The sound itself still stops and starts at once. */
+const SCRATCH_SETTLE_MS=350; let lastScratchMotion=-1e9;
 const state={angle:Math.PI*.2,rotation:0,dragging:false,grabbed:false};
 
 /* ---------- cabinet indicator + messages (presentation only) ---------- */
@@ -81,16 +85,24 @@ function scratchVoice(rate){
  try{source.start(0,Math.min(off,Math.max(0,source.buffer.duration-.01)));}catch{source=null;return;}
  source.onended=()=>{source=null;};
 }
+/* The clock keeps the width of this record's longest reading (its duration, twice) so the bar
+   around it never shifts as the time ticks or a scratch runs it back. Measured once per record
+   and font load, while the clock is on screen. */
+function reserveClock(cl){
+ if(!cl?.style||typeof cl.getBoundingClientRect!=='function')return;const key=duration()+'|'+(document.fonts?.status||'');if(cl.dataset.reserved===key)return;
+ const full=`${clock(duration())} / ${clock(duration())}`;cl.style.minWidth='';cl.textContent=full;const w=cl.getBoundingClientRect().width;
+ if(w>0){cl.style.minWidth=Math.ceil(w)+'px';cl.dataset.reserved=key;}
+}
 function renderStatus(){if(!record)return;const t=time();const src=record.playback_source==='vector'?'Vector groove master':'PNG-traced groove';
- const hold=state.grabbed?(Math.abs(scratchAbsRate)>0.04?'Hold — scratching':'Hold — record stopped'):(down?'Needle down — playing':'Needle lifted — silent');
+ const hold=state.grabbed?(performance.now()-lastScratchMotion<SCRATCH_SETTLE_MS?'Hold — scratching':'Hold — record stopped'):(down?'Needle down — playing':'Needle lifted — silent');
  $('needleState').textContent=hold;
  $('needleSource').textContent=src;
- $('clock').textContent=`${clock(t)} / ${clock(duration())}`;
+ reserveClock($('clock'));$('clock').textContent=`${clock(t)} / ${clock(duration())}`;
  $('ratio').textContent=`${(rpm/record.metadata.rpm_cut).toFixed(3)}× cut speed`;
  if($('fault').hidden)setLamp(state.grabbed?'busy':(down?'on':'off'));
  $('seek').value=t/duration()*1000;
  $('seek').setAttribute('aria-valuetext',`${clock(t)} of ${clock(duration())}`);
- const nb=$('needle'); if(nb){const lifting=down&&!state.grabbed;nb.textContent=lifting?'Lift needle':'Drop needle';nb.setAttribute('aria-pressed',String(lifting));}}
+ const nb=$('needle'); if(nb){const lifting=down;const label=nb.querySelector?.('.now')||nb;label.textContent=lifting?'Lift needle':'Drop needle';nb.setAttribute('aria-pressed',String(lifting));}}
 function sourceRadios(){return [...document.querySelectorAll('input[name=source]')];}
 function applySource(mode, resume=true){
  const next=mode==='vector'?vectorBuffer:pngBuffer;
@@ -113,11 +125,11 @@ function grabStart(x,y){
  if(!record||inspecting)return;
  const r=Math.hypot(x,y),m=record.metadata;
  if(r>m.disc_radius_mm+1)return;
- position=time();silence();ensureAudio();
+ const wasPlaying=down;position=time();silence();ensureAudio();
 
  if(!down)seekToXY(x,y);
  down=true;state.grabbed=true;state.dragging=true;
- lastGrabAngle=Math.atan2(y,x);lastGrabTime=performance.now();scratchAbsRate=0;
+ lastGrabAngle=Math.atan2(y,x);lastGrabTime=performance.now();scratchAbsRate=0;lastScratchMotion=wasPlaying?lastGrabTime:-1e9; // catching a spinning record reads as a scratch
  renderStatus();
 }
 function grabMove(x,y){
@@ -130,6 +142,7 @@ function grabMove(x,y){
  position=clampTime(position+dt);
  state.rotation+=dth;
  scratchVoice(dt/realDt);
+ if(Math.abs(dth)>1e-3)lastScratchMotion=now; // any real hand movement, even too slow to sound
  renderStatus();
 }
 function grabTick(){
@@ -320,7 +333,7 @@ well.addEventListener('dragleave',e=>{if(e.target===well||!well.contains(e.relat
 well.addEventListener('drop',e=>{e.preventDefault();delete well.dataset.drop;if(e.dataTransfer.files.length)openFiles(e.dataTransfer.files);});
 
 /* ---------- cabinet controls → the unchanged mechanics ---------- */
-$('needle').onclick=()=>{$('fault').hidden=true;if(down&&!state.grabbed)lift();else drop().catch(e=>status(e.message,'error'));};
+$('needle').onclick=()=>{$('fault').hidden=true;if(down)lift();else drop().catch(e=>status(e.message,'error'));};
 for(const r of sourceRadios())r.onchange=e=>{if(e.target.checked)applySource(e.target.value);};
 function speed(value){const wasDown=down&&!state.grabbed;position=time();if(!state.grabbed){silence();down=false;}rpm=Number(value);$('rpm').value=rpm;$('rpmValue').textContent=rpm.toFixed(1);presetFor(rpm);if(wasDown)drop(position);renderStatus();}
 $('rpm').oninput=e=>speed(e.target.value);

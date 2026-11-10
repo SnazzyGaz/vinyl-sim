@@ -29,10 +29,10 @@
 
 <nav id="hud" class="hud" aria-label="Turntable">
   <button id="open" class="key" type="button" title="Open a song to cut, or a record to play (O)"><span aria-hidden="true">＋</span><span class="sr-only">Open</span></button>
-  <button id="needle" class="key brass" type="button" disabled aria-pressed="false" title="Drop or lift the needle (Space)">Drop needle</button>
+  <button id="needle" class="key brass" type="button" disabled aria-pressed="false" title="Drop or lift the needle (Space)"><span class="stack"><span class="now">Drop needle</span><span aria-hidden="true">Lift needle</span><span aria-hidden="true">Drop needle</span></span></button>
   <div class="readout">
     <span class="lamp" id="lamp" data-state="off" aria-hidden="true"></span>
-    <span id="needleState" class="state">Needle lifted</span>
+    <span class="state stack"><span id="needleState">Needle lifted</span><span aria-hidden="true">Needle down — playing</span><span aria-hidden="true">Needle lifted — silent</span><span aria-hidden="true">Hold — record stopped</span><span aria-hidden="true">Hold — scratching</span></span>
     <span id="clock" class="figures clock">0:00.0 / 0:00.0</span>
     <span id="needleSource" class="sr-only">No record</span>
   </div>
