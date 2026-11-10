@@ -478,7 +478,7 @@ function updateShiba(bass){
    The old toy shrinks away, the new one pops up with a little overshoot, the pip clicks
    in. The choice is kept in localStorage. */
 const TOY_KEY='vinyl-toy',TOYS=['shiba','hula'];
-let toyChoice=(()=>{try{return localStorage.getItem(TOY_KEY)==='hula'?'hula':'shiba';}catch{return 'shiba';}})();
+let toyChoice=(()=>{try{return localStorage.getItem(TOY_KEY)==='shiba'?'shiba':'hula';}catch{return 'hula';}})();
 const toyAnim={t:1,from:null,to:toyChoice,press:0};
 const popIn=u=>{const c1=2.2,c3=c1+1,x=u-1;return 1+c3*x*x*x+c1*x*x;};
 function toyObject(name){return name==='hula'?hula.group:phonograph.getObjectByName('shiba-toy');}
