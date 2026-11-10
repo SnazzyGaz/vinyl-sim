@@ -102,7 +102,8 @@ function renderStatus(){if(!record)return;const t=time();const src=record.playba
  if($('fault').hidden)setLamp(state.grabbed?'busy':(down?'on':'off'));
  $('seek').value=t/duration()*1000;
  $('seek').setAttribute('aria-valuetext',`${clock(t)} of ${clock(duration())}`);
- const nb=$('needle'); if(nb){const lifting=down;const label=nb.querySelector?.('.now')||nb;label.textContent=lifting?'Lift needle':'Drop needle';nb.setAttribute('aria-pressed',String(lifting));}}
+ const nb=$('needle'); if(nb){const lifting=down;const label=nb.querySelector?.('.now')||nb;label.textContent=lifting?'Lift needle':'Drop needle';nb.setAttribute('aria-pressed',String(lifting));}
+ window.vinylNeedle?.wake?.();} // the needle view, if it is on, redraws from the same state
 function sourceRadios(){return [...document.querySelectorAll('input[name=source]')];}
 function applySource(mode, resume=true){
  const next=mode==='vector'?vectorBuffer:pngBuffer;

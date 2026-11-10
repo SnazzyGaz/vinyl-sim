@@ -6,6 +6,7 @@
 <title>Vinyl Sim — The Room</title>
 <link rel="stylesheet" href="static/deco.css">
 <link rel="stylesheet" href="static/oneroom.css">
+<link rel="stylesheet" href="static/needle-pip.css">
 <script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.min.js","three/addons/":"./static/vendor/three/addons/"}}</script>
 <link rel="modulepreload" href="static/vendor/three/three.module.min.js">
 </head>
@@ -47,6 +48,7 @@
     <label><input type="radio" name="source" value="vector" disabled><span>Vector</span></label>
     <label><input type="radio" name="source" value="png" disabled><span>PNG</span></label>
   </div>
+  <button id="needleView" class="key toggle" type="button" aria-pressed="false" aria-label="Needle view" title="Needle view: a close-up of the stylus in the groove (N)"><span class="tick" aria-hidden="true"></span>Needle<span class="wide"> view</span></button>
   <button id="inspectRecord" class="key" type="button" disabled title="Pick the record up (I)">Inspect</button>
   <button id="saveRecord" class="key" type="button" title="Save the record on the platter (S)">Save</button>
   <button id="resetView" class="key" type="button" title="Back to the default seat (Home)">Reset</button>
@@ -73,7 +75,7 @@
     <label class="slider" title="Picture quality"><span class="label">Picture</span><select id="quality" class="quality"><option value="auto">Auto</option><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Low</option></select><output id="qualityTier" class="figures"></output></label>
   </div>
   <h3>Keys</h3>
-  <p class="keys"><kbd>Space</kbd> needle · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 33⅓ / 45 / 78 · <kbd>[</kbd><kbd>]</kbd> fine speed · <kbd>↑</kbd><kbd>↓</kbd> volume · <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>V</kbd> source · <kbd>I</kbd> inspect · <kbd>O</kbd> open · <kbd>S</kbd> save · <kbd>Del</kbd> off the shelf · <kbd>Home</kbd> view · <kbd>?</kbd> this card</p>
+  <p class="keys"><kbd>Space</kbd> needle · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 33⅓ / 45 / 78 · <kbd>[</kbd><kbd>]</kbd> fine speed · <kbd>↑</kbd><kbd>↓</kbd> volume · <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>V</kbd> source · <kbd>I</kbd> inspect · <kbd>N</kbd> needle view · <kbd>O</kbd> open · <kbd>S</kbd> save · <kbd>Del</kbd> off the shelf · <kbd>Home</kbd> view · <kbd>?</kbd> this card</p>
   <p class="note">Mono, raster-limited and lo-fi on purpose: this is a digital stylus reading a 16-bit picture. Everything runs on this computer; nothing is uploaded.</p>
 </section>
 
@@ -81,6 +83,7 @@
 <script src="static/vinyl-client.js"></script>
 <script src="static/player.js"></script>
 <script src="static/oneroom.js"></script>
+<script src="static/needle-pip.js"></script>
 <script type="module" src="static/view.js"></script>
 </body>
 </html>

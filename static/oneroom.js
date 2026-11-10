@@ -164,6 +164,7 @@ window.addEventListener('keydown',e=>{
  else if(k==='ArrowLeft'||k==='ArrowRight')seekBy(k==='ArrowRight'?5:-5);
  else if(k==='v'||k==='V'){if(v.sources?.both)v.setSource(v.source==='vector'?'png':'vector');}
  else if(k==='i'||k==='I'){if(!$('inspectRecord').disabled)$('inspectRecord').click();}
+ else if(k==='n'||k==='N')$('needleView')?.click();
  else if(k==='o'||k==='O')pick();
  else if(k==='s'||k==='S')save(null);
  else if(k==='Home')$('resetView').click();

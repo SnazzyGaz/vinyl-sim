@@ -6,6 +6,7 @@
 <title>Player — Vinyl Sim</title>
 <link rel="stylesheet" href="static/deco.css">
 <link rel="stylesheet" href="static/player.css">
+<link rel="stylesheet" href="static/needle-pip.css">
 <script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.min.js","three/addons/":"./static/vendor/three/addons/"}}</script>
 <link rel="modulepreload" href="static/vendor/three/three.module.min.js">
 </head>
@@ -88,6 +89,7 @@
       <div class="plate view-plate">
         <button id="inspectRecord" class="btn" type="button" disabled>Inspect record</button>
         <button id="resetView" class="btn" type="button">Reset view</button>
+        <button id="needleView" class="btn toggle" type="button" aria-pressed="false" aria-label="Needle view" title="A close-up of the stylus in the groove, top right of the turntable"><span class="tick" aria-hidden="true"></span>Needle<span class="wide"> view</span></button>
         <label class="label quality-row" for="quality"><span>Picture</span>
           <select id="quality" class="quality">
             <option value="auto">Auto</option><option value="high">High</option><option value="balanced">Balanced</option><option value="low">Low</option>
@@ -108,6 +110,7 @@
         <li><strong>Sleeves:</strong> loaded records wait in sleeves beside the cabinet — click one to slide it half out, click it again to swap it onto the platter (dragging it there works too). The record you were playing goes back in its sleeve.</li>
         <li><strong>Inspect:</strong> with the needle lifted, pick up the disc (or use Inspect record). Drag to turn it, scroll to study the grooves. Double-click, Esc or Put record back returns it to the spindle.</li>
         <li><strong>Scratch:</strong> while playing, hold the disc to stop it; drag around the centre to scratch back and forth. Let go and it plays on from there.</li>
+        <li><strong>Needle view:</strong> the small close-up at the top right shows the stylus in the groove it is reading, at true scale, from the source you are playing. It follows the record, scratches included. Needle view switches it off; the choice is kept.</li>
         <li><strong>Position:</strong> the record turns under a fixed needle. Moving Position while the needle is lifted will not drop it.</li>
         <li><strong>View:</strong> wheel zooms, right-drag swings round the front of the machine, middle-drag dollies. The camera stays where you leave it when you swap or inspect records; Reset view glides back to the default seat.</li>
         <li><strong>Picture:</strong> Auto picks High, Balanced or Low for your graphics card and steps down if frames get slow. The scene only redraws when something moves, so an idle player costs almost nothing.</li>
@@ -122,6 +125,7 @@
 <script src="static/knob.js"></script>
 <script src="static/vinyl-client.js"></script>
 <script src="static/player.js"></script>
+<script src="static/needle-pip.js"></script>
 <script type="module" src="static/view.js"></script>
 </body>
 </html>
