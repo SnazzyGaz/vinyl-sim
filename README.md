@@ -32,7 +32,7 @@ On GitHub Pages, cutting and playing both happen in your browser and nothing is 
 - **`name.png` carries the sound.** Each pixel's value is the depth of the disc at that point. The Player follows the spiral, measures how far the groove swings sideways, and turns that swing back into audio (Source: **PNG trace**).
 - **`name.groove.wav` and `name.json` are a companion master.** They hold the same prepared groove as clean samples, saved at cut time. Source: **Vector** plays them, so you can compare them with the trace. A PNG on its own plays fine without them.
 - **`name.preview.png` is just a picture.** It is 8-bit and does not play.
-- **The 3D disc is an illustration.** Inspect shades the record with the PNG's real relief, so you are looking at the groove you heard, but the sound never comes from the rendering.
+- **The 3D disc shows the same groove.** Inspect shades the record with the PNG's real relief, so you are looking at the groove you heard. The Player traces that groove into audio samples when the record goes on, before it plays.
 
 ## The Room
 
