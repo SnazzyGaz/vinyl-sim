@@ -3,12 +3,18 @@
    runs no surface nets; the file is fetched after the first frame. Shell fur: one base
    shell plus a few offset shells of the same mesh, each a MeshStandardMaterial patched
    for the strand pattern, so the fur takes the room's own key light, shadows and
-   reflections. The butt rides a damped spring (uWob x the baked aWob weights) that the
-   record's bass drives: kicks alternate an up-down bounce and a side twerk, and a
-   beat-locked figure-8 keeps it moving in between (tunable, see update()). */
+   reflections. The music drives a damped spring at the seam where the hind legs meet
+   the bum (uWob, see update()). The bum itself is a softer material than the body: a
+   jelly that rings at its own low stiffness and damping, kicked by the seam's jolts, and
+   its motion travels out from each leg seam as a decaying wave (see jelly below), so
+   ripples start at the legs and spread over the cheeks instead of the whole region
+   being tugged about. Legs, feet and clogs never move. */
 export function createShiba(THREE,{url,shells=10,query=null}={}){
  const S={data:null,loading:null,holder:null,group:null,base:null,uWob:{value:new THREE.Vector3()},vel:new THREE.Vector3(),
-  fast:0,slow:0,peak:.02,since:1,side:1,beats:0,armed:true,drive:0,phase:0,period:.5,amp:0,pick:null,mats:null};
+  fast:0,slow:0,peak:.02,since:1,side:1,beats:0,armed:true,drive:0,phase:0,period:.5,amp:0,pick:null,mats:null,
+  // jelly: the seam source's recent past (newest first, one sample per HSTEP), the jelly's own state, and shader uniforms
+  uHist:{value:Array.from({length:32},()=>new THREE.Vector3())},uSeam:{value:[new THREE.Vector3(),new THREE.Vector3()]},uJel:{value:new THREE.Vector4(5.5,1.5,.35,0)},
+  jel:new THREE.Vector3(),jelV:new THREE.Vector3(),src:new THREE.Vector3(),lastV:new THREE.Vector3(),acc:0,motion:0};
  const srgb=x=>x<=.04045?x/12.92:Math.pow((x+.055)/1.055,2.4);
  function decode(buf){
   const dv=new DataView(buf);if(String.fromCharCode(...new Uint8Array(buf,0,4))!=='SHB1')throw new Error('not a shiba bake');
@@ -22,18 +28,48 @@ export function createShiba(THREE,{url,shells=10,query=null}={}){
   body.setAttribute('aCol',new THREE.BufferAttribute(arr('body.col').slice(),3,true));
   body.setAttribute('aFx',new THREE.BufferAttribute(arr('body.fx').slice(),2,true));
   body.setAttribute('aWob',new THREE.BufferAttribute(arr('body.wob').slice(),1,true));
+  body.setAttribute('aSoft',new THREE.BufferAttribute(softMask(body),1));
   body.computeBoundingSphere();body.computeBoundingBox();
+  // the seams: the back of each hind leg's top, where leg turns into bum (from the clog positions the bake placed)
+  h.clogs.forEach((c,i)=>{if(i<2)S.uSeam.value[i].set(c.p[0]+.35,1.1,c.p[2]);});
   const clog=geo('clog'),ao=arr('clog.ao'),c=new Float32Array(ao.length*3);
   // the original fed these grey AO values straight to its sRGB output: linearise them for ours
   for(let i=0;i<ao.length;i++)c[i*3]=c[i*3+1]=c[i*3+2]=srgb(ao[i]/255);
   clog.setAttribute('color',new THREE.BufferAttribute(c,3));clog.computeBoundingSphere();
   return {h,body,clog};
  }
+ /* the soft part: the baked wobble weight, narrowed to the cheeks and the undercarriage behind
+    the legs (the bake's rolled cheek ellipsoids), so the back and flanks stay body-stiff */
+ function softMask(g){
+  const P=g.attributes.position,W=g.attributes.aWob,out=new Float32Array(P.count),C=Math.cos(.36),Sn=Math.sin(.36);
+  const ss=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
+  for(let i=0;i<P.count;i++){const x=P.getX(i),y=P.getY(i),z=P.getZ(i),yl=(y-1.66)*C+z*Sn,zl=Math.abs(z*C-(y-1.66)*Sn);
+   out[i]=W.getX(i)*ss(1.75,1.1,Math.hypot((x-1.27)/.6,yl/.68,(zl-.35)/.45))*ss(2.6,2.2,y);}
+  return out;
+ }
+ /* ---------- jelly: ripples that start at the leg seams ----------
+    uHist holds the seam source (the music spring plus the jelly's own ringing) for the last
+    ~0.5 s. A point at distance d from a seam shows that source as it was d/speed ago, scaled
+    by its softness and exp(-(d-0.5)/decay) past the first half unit: the wave leaves the
+    seam, travels over the bum and dies out, and later kicks overlap earlier ones. Both seams add, so their rings cross. The wave
+    moves the surface along with the source and pushes it away from the seam (a smooth
+    direction, so the hard crease between the cheeks never folds); the slope of the wave
+    tilts the normal so the ripple catches the light. */
+ const HSTEP=1/60,HN=32;
+ const JELLY_GLSL=`attribute float aSoft;uniform vec3 uHist[32];uniform vec3 uSeam[2];uniform vec4 uJel;
+vec3 jelHist(float tau,out vec3 dv){float f=clamp(tau/${HSTEP.toFixed(8)}-uJel.w,0.0,30.999);int i=int(f);float a=f-float(i);
+ vec3 h0=uHist[i],h1=uHist[i+1];dv=(h0-h1)/${HSTEP.toFixed(8)};return mix(h0,h1,a);}
+vec3 jelly(vec3 p,vec3 n,inout vec3 nn){vec3 o=vec3(0.0);if(aSoft<=0.0)return o;vec3 g=vec3(0.0);
+ for(int s=0;s<2;s++){vec3 r=p-uSeam[s];float d=max(length(r),1e-3);vec3 rh=r/d,dv;vec3 H=jelHist(d/uJel.x,dv);
+  float e=0.65*aSoft*exp(-max(d-0.5,0.0)/uJel.y),b=dot(H,rh),rn=dot(rh,n);o+=e*(H+uJel.z*b*rh);
+  g+=e*(-(dot(dv,n)+uJel.z*dot(dv,rh)*rn)/uJel.x-step(0.5,d)*(dot(H,n)+uJel.z*b*rn)/uJel.y)*(rh-n*rn);}
+ nn=normalize(n-g);return o;}
+`;
  /* ---------- fur: patched standard material per shell ---------- */
- const FUR_VS_HEAD=`attribute vec3 aCol;attribute vec2 aFx;attribute float aWob;uniform float uH,uLen;uniform vec3 uWob;
+ const FUR_VS_HEAD=`attribute vec3 aCol;attribute vec2 aFx;uniform float uH,uLen;
 varying vec3 vBase,vFurCol;varying vec2 vFx;
 vec3 furLin(vec3 c){return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(vec3(.04045),c));}
-`;
+`+JELLY_GLSL;
  const FUR_FS_HEAD=`uniform float uH,uDens,uRim;varying vec3 vBase,vFurCol;varying vec2 vFx;
 float furHash(vec3 p){p=fract(p*0.3183099+vec3(0.1,0.2,0.3));p*=17.0;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float furVn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.0-2.0*f);
@@ -42,12 +78,13 @@ float furVn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.0-2.0*f);
 `;
  function furMaterial(h,furLen,shellCount){
   const m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.92,metalness:0,alphaToCoverage:h>0});
-  const u={uH:{value:h},uLen:{value:furLen},uDens:{value:120},uRim:{value:.5},uWob:S.uWob};
+  const u={uH:{value:h},uLen:{value:furLen},uDens:{value:120},uRim:{value:.5},uHist:S.uHist,uSeam:S.uSeam,uJel:S.uJel};
   m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,u);
    sh.vertexShader=FUR_VS_HEAD+sh.vertexShader
     .replace('#include <beginnormal_vertex>',`vec3 furN=normalize(normal);vec3 comb=vec3(0.35,-1.0,0.0);comb-=furN*dot(comb,furN); // fur lies down and back
-vec3 objectNormal=normalize(furN+comb*0.4*uH);`)
-    .replace('#include <begin_vertex>',`float furL=uLen*aFx.x;vec3 transformed=position+(furN*uH+comb*0.5*uH*uH)*furL+aWob*uWob;
+vec3 jelN=furN,jelO=jelly(position,furN,jelN);
+vec3 objectNormal=normalize(jelN+comb*0.4*uH);`)
+    .replace('#include <begin_vertex>',`float furL=uLen*aFx.x;vec3 transformed=position+(furN*uH+comb*0.5*uH*uH)*furL+jelO;
 vBase=position;vFurCol=furLin(aCol);vFx=aFx;`);
    sh.fragmentShader=FUR_FS_HEAD+sh.fragmentShader
     .replace('#include <color_fragment>',`#include <color_fragment>
@@ -62,7 +99,7 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
  }
  function depthMaterial(){
   const m=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});
-  m.onBeforeCompile=sh=>{sh.uniforms.uWob=S.uWob;sh.vertexShader='attribute float aWob;uniform vec3 uWob;\n'+sh.vertexShader.replace('#include <begin_vertex>','vec3 transformed=position+aWob*uWob;');};
+  m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,{uHist:S.uHist,uSeam:S.uSeam,uJel:S.uJel});sh.vertexShader=JELLY_GLSL+sh.vertexShader.replace('#include <begin_vertex>','vec3 jelN=normalize(normal);vec3 transformed=position+jelly(position,jelN,jelN);');};
   m.customProgramCacheKey=()=>'shiba-depth';m.userData.shared=true;return m;
  }
  function materials(h){
@@ -156,12 +193,20 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
           'alt'   alternating kicks only   'beat' every beat pokes both axes at once
     fig   sway strength: the slow lean that follows sustained bass ('react'), or the
           figure-8 drive between beats ('fig8')
-    clamp largest offset (dog units)  chaos random shoves and looser damping (0..1) */
- const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0};
+    clamp largest offset (dog units)  chaos random shoves and looser damping (0..1)
+    The soft bum (jelly):
+    jelly  strength of the ripples (0 = a rigid bum)   seam  how much of the seam spring's own
+           travel the wave carries (the rest of the look is the jelly ringing)
+    hz     the jelly's ringing frequency (lower = softer)   damp  its damping ratio (lower = rings longer)
+    speed  how fast ripples travel from the leg seam (dog units/s; 3.2..12)
+    decay  how far they get before dying out (dog units)    bulge  how much each ripple swells the surface */
+ const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0,jelly:1,seam:.8,hz:5,damp:.12,speed:5.5,decay:1.5,bulge:.35};
  const MODES=['react','fig8','alt','beat'];
  const P=Object.assign({},DEFAULTS);
  function setParams(o={}){for(const [k,v] of Object.entries(o)){if(!(k in DEFAULTS)||v==null||v==='')continue;P[k]=k==='mode'?String(v):Math.max(0,Number(v)||0);}
-  if(!MODES.includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);return P;}
+  if(!MODES.includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);
+  const lim=(k,a,b)=>{P[k]=Math.min(b,Math.max(a,P[k]));};lim('jelly',0,3);lim('seam',0,1);lim('hz',1,12);lim('damp',.02,1);lim('speed',3.2,12);lim('decay',.2,3);lim('bulge',0,1.5);
+  S.uJel.value.set(P.speed,P.decay,P.bulge,S.uJel.value.w);return P;}
  // ?shibaAmp=1.6&shibaLR=0&shibaUD=1.6&shibaMode=beat ... (key case doesn't matter)
  function paramsFromQuery(q){const o={};if(!q)return o;for(const [key,v] of q){const m=/^shiba(.+)$/i.exec(key);if(!m)continue;const k=Object.keys(DEFAULTS).find(d=>d.toLowerCase()===m[1].toLowerCase());if(k)o[k]=v;}return o;}
  const tmpT=new THREE.Vector3();
@@ -257,15 +302,49 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
   if(!playing&&S.drive<1e-3&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
   return w.lengthSq()+v.lengthSq()>0;
  }
+ /* The soft bum, stepped after the seam spring each frame. The jelly is a much softer spring
+    (hz, damp) carried by the seam: a jolt of the seam leaves it behind (its inertia), so it
+    overshoots and rings on its own. The source sent down the wave is part of the seam's travel
+    plus that ringing, its speed limited so a ripple's slope stays under 0.75 where the two seams'
+    waves stack (a slope of 1 would fold the surface), sampled at a
+    fixed 60 Hz into uHist; uJel.w is the time since the newest sample, so the wave glides
+    between samples at any frame rate. */
+ const tmpJ=new THREE.Vector3();
+ function jellyStep(dt){
+  const j=S.jel,jv=S.jelV,src=S.src,H=S.uHist.value,v=S.vel,w=S.uWob.value,g=P.jelly;
+  tmpJ.subVectors(v,S.lastV);S.lastV.copy(v);jv.addScaledVector(tmpJ,-.3*g);   // the seam jolts, the soft mass lags
+  const om=2*Math.PI*P.hz,K=om*om,C=2*P.damp*om,n=Math.max(1,Math.ceil(dt/.004)),h=dt/n,jmax=.12*Math.max(g,.01);
+  for(let i=0;i<n;i++){jv.x+=(-K*j.x-C*jv.x)*h;jv.y+=(-K*j.y-C*jv.y)*h;jv.z+=(-K*j.z-C*jv.z)*h;j.addScaledVector(jv,h);}
+  if(j.length()>jmax){j.setLength(jmax);}
+  S.acc+=dt;
+  while(S.acc>=HSTEP){S.acc-=HSTEP;
+   tmpJ.copy(w).multiplyScalar(P.seam*g).add(j).sub(src);const vmax=.75*P.speed*HSTEP/(1.3*(1+P.bulge));if(tmpJ.length()>vmax)tmpJ.setLength(vmax);src.add(tmpJ);const cap=.51/(1+P.bulge);if(src.length()>cap)src.setLength(cap);
+   const last=H[HN-1];for(let i=HN-1;i>0;i--)H[i]=H[i-1];H[0]=last.copy(src);}
+  S.uJel.value.w=S.acc/HSTEP;
+  let m=0;for(const x of H)m+=x.lengthSq();S.motion=Math.sqrt(m)+j.length()*3+jv.length()*.01;
+  if(S.motion<2e-5&&w.lengthSq()<1e-12){jellyRest();return false;}
+  return true;
+ }
+ // the same field as JELLY_GLSL, on the CPU (tests, and anything that needs where a bum point is now)
+ function jellyAt(p,n,soft,out=new THREE.Vector3()){
+  out.set(0,0,0);if(!(soft>0))return out;const H=S.uHist.value,J=S.uJel.value;
+  for(const sm of S.uSeam.value){const rx=p.x-sm.x,ry=p.y-sm.y,rz=p.z-sm.z,d=Math.max(Math.hypot(rx,ry,rz),1e-3);
+   const f=Math.min(30.999,Math.max(0,d/J.x/HSTEP-J.w)),i=Math.floor(f),a=f-i,h0=H[i],h1=H[i+1];
+   const hx=h0.x+(h1.x-h0.x)*a,hy=h0.y+(h1.y-h0.y)*a,hz=h0.z+(h1.z-h0.z)*a,e=.65*soft*Math.exp(-Math.max(d-.5,0)/J.y),b=(hx*rx+hy*ry+hz*rz)/d;
+   out.x+=e*(hx+J.z*b*rx/d);out.y+=e*(hy+J.z*b*ry/d);out.z+=e*(hz+J.z*b*rz/d);}
+  return out;
+ }
+ function jellyRest(){S.jel.set(0,0,0);S.jelV.set(0,0,0);S.src.set(0,0,0);S.lastV.copy(S.vel);for(const x of S.uHist.value)x.set(0,0,0);S.motion=0;S.acc=0;S.uJel.value.w=0;}
  /* update(dt, music, still): music is features(...) (or null when the needle is up),
     or a bare low-band level number for the beat modes. */
  function update(dt,music,still){
   const w=S.uWob.value,v=S.vel;
-  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=S.drive=0;resetReact();return false;}
+  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=S.drive=0;resetReact();jellyRest();return false;}
   const f=typeof music==='number'?{low:music,sub:music,bass:0,mid:0,high:0,bal:0,pitch:0}:music;
-  return P.mode==='react'?updateReact(dt,f):updateBeat(dt,f?f.low:0);
+  const seam=P.mode==='react'?updateReact(dt,f):updateBeat(dt,f?f.low:0);
+  return jellyStep(dt)||seam;
  }
  function fromBuffer(buf){S.data=decode(buf);S.loading=Promise.resolve(true);return attach();}
  setParams(paramsFromQuery(query));
- return {load,fromBuffer,mount,update,features,poke,attach,detail,setParams,get params(){return P;},defaults:DEFAULTS,get state(){return S;},get wob(){return S.uWob.value;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
+ return {load,fromBuffer,mount,update,features,poke,attach,detail,setParams,get params(){return P;},defaults:DEFAULTS,get state(){return S;},get wob(){return S.uWob.value;},get motion(){return S.motion;},jellyAt,get ripple(){const H=S.uHist.value;return S.motion?H[0].x*3+H[0].y*5+H[0].z*7+H[6].x*11+H[6].y*13+H[6].z*17+H[14].x*19+H[14].y*23+H[14].z*29+S.uJel.value.w*.01:0;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
 }

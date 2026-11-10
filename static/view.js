@@ -463,9 +463,10 @@ function updateHula(energy){
 /* ---------- the shiba (Garyck Arntzen): a cabinet toy ----------
    He stands in the front-left corner (only one toy shows at a time; the hula girl is the
    default and the brass pip on the cabinet front swaps them). He sits side-on to the seat
-   so the butt shows; its spring reacts to the record under the needle (hits, bass line,
-   loudness; see shiba.js). Tuning: ?shibaAmp=&shibaLR=&shibaUD=
-   &shibaMode=react|fig8|alt|beat&shibaFig=&shibaClamp=&shibaChaos= */
+   so the butt shows; a spring at the leg seam reacts to the record under the needle (hits,
+   bass line, loudness) and the soft bum ripples out from there (see shiba.js). Tuning:
+   ?shibaAmp=&shibaLR=&shibaUD=&shibaMode=react|fig8|alt|beat&shibaFig=&shibaClamp=&shibaChaos=
+   and for the jelly ?shibaJelly=&shibaSeam=&shibaHz=&shibaDamp=&shibaSpeed=&shibaDecay=&shibaBulge= */
 const pageQuery=(()=>{try{return new URLSearchParams(location.search);}catch{return null;}})();
 const shiba=typeof createShiba==='function'?createShiba(THREE,{url:String(import.meta.url).replace(/[^/]*$/,'shiba.bin'),shells:10,query:pageQuery}):null;
 function buildShibaSpot(R,top,W,D){
@@ -1250,7 +1251,7 @@ let lastFrame=performance.now(),lastSig=NaN,firstDrawn=false,shadowSig=NaN,shado
    circle). The arm's audio wobble is quantised away; updates are capped at 30 Hz. */
 function shadowSignature(){
  let s=Math.round(armRig.rotation.z*600)*1.7+Math.round(armTilt.rotation.y*600)*2.3+(tonearm.visible?5:0)+builds*101+
-  Math.round((hula.ax+hula.ay*1.3+hula.bz*1.7)*400)*.7+(shiba?Math.round((shiba.wob.x+shiba.wob.y*1.3+shiba.wob.z*1.7)*400)*.9+(shiba.loaded?3:0):0)+toyAnim.t*29+(toyChoice==='hula'?11:0)+disc.position.x*.31+disc.position.y*.37+disc.position.z*.41+disc.quaternion.x*53+disc.quaternion.y*59+outgoing.children.length*7;
+  Math.round((hula.ax+hula.ay*1.3+hula.bz*1.7)*400)*.7+(shiba?Math.round((shiba.wob.x+shiba.wob.y*1.3+shiba.wob.z*1.7)*400)*.9+Math.round((shiba.ripple||0)*400)*.83+(shiba.loaded?3:0):0)+toyAnim.t*29+(toyChoice==='hula'?11:0)+disc.position.x*.31+disc.position.y*.37+disc.position.z*.41+disc.quaternion.x*53+disc.quaternion.y*59+outgoing.children.length*7;
  for(const j of sleeves.children)s+=j.position.x*.011+j.position.y*.013+j.position.z*.017+sleeves.children.length;
  for(const g of outgoing.children)s+=g.position.x*.019+g.position.z*.023;
  return s;
@@ -1265,7 +1266,7 @@ const focusPoint=new THREE.Vector3(); // the near half of the record
 function signature(){
  const c=camera.position,t=controls.target,q=disc.quaternion,p=disc.position;
  return c.x*1.31+c.y*1.73+c.z*2.11+t.x*.37+t.y*.53+t.z*.71+disc.rotation.z*997+p.x*3.1+p.y*3.7+p.z*4.3+q.x*41+q.y*43+
-  armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(shiba?shiba.wob.x*313+shiba.wob.y*317+shiba.wob.z*331+(shiba.loaded?17:0):0)+toyAnim.t*337+toyAnim.press*347+(toyChoice==='hula'?19:0)+(tonearm.visible?1:0)+outgoing.children.length*13;
+  armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(shiba?shiba.wob.x*313+shiba.wob.y*317+shiba.wob.z*331+(shiba.ripple||0)*337+(shiba.loaded?17:0):0)+toyAnim.t*337+toyAnim.press*347+(toyChoice==='hula'?19:0)+(tonearm.visible?1:0)+outgoing.children.length*13;
 }
 function tickScene(dt, nowMs){
  const v=window.vinyl,r=v&&v.record;let energy=0,music=null;
