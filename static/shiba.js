@@ -202,7 +202,11 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
     decay  how far they get before dying out (dog units)    bulge  how much each ripple swells the surface
     resist how firmly the bum pushes back against the seam spring's swing (extra damping, 0..1):
            0 is the earlier floaty feel, higher settles quicker with less overshoot */
- const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0,jelly:1,seam:.65,hz:6,damp:.38,speed:5.5,decay:1.5,bulge:.35,resist:.5};
+ // Defaults: a firm, dense set jelly (ham hock, not a water balloon): a stiff quick quiver (hz 9) that
+ // settles in about a cycle and a half (damp .5, resist .6), ripples that run fast and die close to
+ // the seam (speed 7.5, decay 1.1) with little swell or slosh (bulge .25, seam .55); the music drive
+ // only a touch livelier than before (amp 1.45).
+ const DEFAULTS={amp:1.45,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0,jelly:1.15,seam:.55,hz:9,damp:.5,speed:7.5,decay:1.1,bulge:.25,resist:.6};
  const MODES=['react','fig8','alt','beat'];
  const P=Object.assign({},DEFAULTS);
  function setParams(o={}){for(const [k,v] of Object.entries(o)){if(!(k in DEFAULTS)||v==null||v==='')continue;P[k]=k==='mode'?String(v):Math.max(0,Number(v)||0);}
