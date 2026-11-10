@@ -42,7 +42,7 @@ On GitHub Pages, cutting and playing both happen in your browser and nothing is 
 
 The Room puts cutting, playing and keeping records in one scene. Drop a song anywhere, or click the stack of blanks on the bench, and the lathe cuts it. A picture dropped with the song becomes its cover. Every record you cut or open is filed in the crate, and it is still there next visit in the same browser. Put a sleeve on the post tray to save the record's files.
 
-A toy rides on the cabinet lid and dances to the music. The hula girl is the default, and a small brass pip on the cabinet front swaps in Garyck Arntzen's *Shiba in Clogs*.
+A toy rides on the cabinet lid and dances to the music. The hula girl is the default, and a small brass pip on the cabinet front swaps in Garyck Arntzen's shiba.
 
 ## Controls
 
@@ -87,6 +87,6 @@ A cutting lathe carves one spiral groove into a spinning disc, and on a mono rec
 
 ## Credits
 
-Made by [Garyck Arntzen](https://www.garyckarntzen.com/) · [@_mintydoge](https://x.com/_mintydoge). *Shiba in Clogs* is by Garyck Arntzen.
+Made by [Garyck Arntzen](https://www.garyckarntzen.com/) · [@_mintydoge](https://x.com/_mintydoge).
 
 Bundled: [Three.js](https://threejs.org/) r169 (MIT, `static/vendor/three/LICENSE.txt`), and the Jost and Manrope fonts (SIL Open Font License, `static/fonts/`). The Python packages in `requirements.txt` are installed separately under their own licences.

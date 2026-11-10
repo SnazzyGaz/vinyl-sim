@@ -1,4 +1,4 @@
-// Bakes the "Shiba in Clogs" toy (an SDF dog by Garyck Arntzen) into static/shiba.bin
+// Bakes the shiba toy (an SDF dog by Garyck Arntzen) into static/shiba.bin
 // for the player's cabinet: the page loads these meshes instead of running the
 // surface-nets build at start-up. Run from the repo root: node tools/bake-shiba.mjs [bodyStep=0.028] [clogStep=0.011]
 // The SDF, paint and clog code below is the original page's, unchanged.
@@ -283,7 +283,7 @@ mesh('body',body,{col,fx,wob}); mesh('clog',clog,{ao:ccol});
 const layout={}; let off=0;
 for(const b of blocks){ off=(off+3)&~3; layout[b.name]={offset:off,type:b.arr.constructor.name,length:b.arr.length}; off+=b.arr.byteLength; }
 const header={format:'shiba-toy-v1',step:STEP,clogStep:CLOG_STEP,units:'dog-local (y up, faces -x)',meshes:meta,layout,parts,tubes,claws,clogs,
-  furLen:0.042,credit:'Shiba in Clogs, Garyck Arntzen'};
+  furLen:0.042,credit:'Garyck Arntzen'};
 let hj=Buffer.from(JSON.stringify(header)); const pad=(4-((8+hj.length)%4))%4; hj=Buffer.concat([hj,Buffer.alloc(pad,32)]);
 const out=Buffer.alloc(8+hj.length+off); out.write('SHB1',0); out.writeUInt32LE(hj.length,4); hj.copy(out,8);
 const base=8+hj.length; for(const b of blocks) Buffer.from(b.arr.buffer,b.arr.byteOffset,b.arr.byteLength).copy(out,base+layout[b.name].offset);

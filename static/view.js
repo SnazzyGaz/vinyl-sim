@@ -460,7 +460,7 @@ function updateHula(energy){
  hula.hips.rotation.y=hula.ax*.5;hula.torso.rotation.y=-hula.ax*1.3;
  for(const a of hula.arms)a.rotation.x=(still?0:Math.sin(hula.phase+a.userData.sx)*drive*.35);
 }
-/* ---------- "Shiba in Clogs" (Garyck Arntzen): a cabinet toy ----------
+/* ---------- the shiba (Garyck Arntzen): a cabinet toy ----------
    He stands in the front-left corner (only one toy shows at a time; the hula girl is the
    default and the brass pip on the cabinet front swaps them). He sits side-on to the seat
    so the butt shows; its spring reacts to the record under the needle (hits, bass line,

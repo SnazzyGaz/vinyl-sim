@@ -1,4 +1,4 @@
-/* "Shiba in Clogs": Garyck Arntzen's SDF shiba as a cabinet toy, beside the hula girl.
+/* Garyck Arntzen's SDF shiba as a cabinet toy, beside the hula girl.
    The meshes are baked offline (tools/bake-shiba.mjs -> static/shiba.bin), so start-up
    runs no surface nets; the file is fetched after the first frame. Shell fur: one base
    shell plus a few offset shells of the same mesh, each a MeshStandardMaterial patched
