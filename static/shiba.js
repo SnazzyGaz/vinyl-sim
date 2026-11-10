@@ -39,9 +39,9 @@ export function createShiba(THREE,{url,shells=10,query=null}={}){
   return {h,body,clog};
  }
  /* the soft part: the baked wobble weight, narrowed to the cheeks and the undercarriage behind
-    the legs (the bake's rolled cheek ellipsoids), so the back and flanks stay body-stiff */
+    the legs (the bake's cheek ellipsoids), so the back and flanks stay body-stiff */
  function softMask(g){
-  const P=g.attributes.position,W=g.attributes.aWob,out=new Float32Array(P.count),C=Math.cos(.36),Sn=Math.sin(.36);
+  const P=g.attributes.position,W=g.attributes.aWob,out=new Float32Array(P.count),C=1,Sn=0; // the bake's cheeks: level, mirrored about z=0
   const ss=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
   for(let i=0;i<P.count;i++){const x=P.getX(i),y=P.getY(i),z=P.getZ(i),yl=(y-1.66)*C+z*Sn,zl=Math.abs(z*C-(y-1.66)*Sn);
    out[i]=W.getX(i)*ss(1.75,1.1,Math.hypot((x-1.27)/.6,yl/.68,(zl-.35)/.45))*ss(2.6,2.2,y);}

@@ -49,7 +49,9 @@ const EU=new T.Vector3().crossVectors(EV,EW);
 const EAR_W=0.175, EAR_H=0.31, EAR_HYP=Math.hypot(EAR_W,EAR_H);
 
 // ---------- Body SDF (dog faces -x, y up) ----------
-const HIP_ROLL=0.36, HIP_C=Math.cos(HIP_ROLL), HIP_S=Math.sin(HIP_ROLL);
+// HIP_ROLL was 0.36 in the original model, which mirrored the cheeks about a tilted plane and left
+// the near cheek ~0.25 lower than the far one; at 0 they mirror about z=0 and sit level at the old mean height
+const HIP_ROLL=0, HIP_C=Math.cos(HIP_ROLL), HIP_S=Math.sin(HIP_ROLL);
 const LEG_X = [0.53, 0.27];             // near (+z) leg, far (-z) leg
 let gT=9,gArm=9,gLeg=9,gHead=9,gEar=9,gEu=0,gEv=0,gEw=0;
 function sdBody(x,y,z){
@@ -59,7 +61,7 @@ function sdBody(x,y,z){
   if(x>-0.3 && y<3.0){
     d=smin(d, ell(x,y,z,0.7,1.6,0, 0.64,0.8,0.68),0.3);                   // hip bridge (arched back dips above this)
     const yl=(y-1.66)*HIP_C+z*HIP_S, zl=Math.abs(z*HIP_C-(y-1.66)*HIP_S);
-    d=smin(d, ell(x,yl,zl,1.27,0,0.35, 0.6,0.68,0.45),0.22);              // butt cheeks, hips rolled, hard crease between
+    d=smin(d, ell(x,yl,zl,1.27,0,0.35, 0.6,0.68,0.45),0.22);              // butt cheeks, level and mirrored, hard crease between
   }
   gT=d;
   gLeg=9;
