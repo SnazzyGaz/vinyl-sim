@@ -1,73 +1,92 @@
 # Vinyl Sim
 
-Cut audio into a grooved 16-bit PNG record, then play it on a 3D phonograph.
+Vinyl Sim cuts a song into a 16-bit greyscale PNG that holds one spiral groove, then plays it back on a 3D phonograph by tracing that groove.
 
-[Open The Room](https://snazzygaz.github.io/vinyl-sim/room.html) · [Player demo](https://snazzygaz.github.io/vinyl-sim/player.html) · [Cutter](https://snazzygaz.github.io/vinyl-sim/cutter.html)
+**[Play it in your browser](https://snazzygaz.github.io/vinyl-sim/room.html)** · [Player](https://snazzygaz.github.io/vinyl-sim/player.html) · [Cutter](https://snazzygaz.github.io/vinyl-sim/cutter.html) · [Run it locally](#run-it-locally)
 
-The GitHub Pages demo cuts and plays records right in your browser, and the player starts with a sample record already on the platter. Run locally, the same pages use the Python server (`serve.py`) instead.
+![Close view of the phonograph in the Player: the brass reproducer rests on the spinning record's outer grooves below the horn, on a mahogany cabinet; beside it the control panel shows Source set to PNG trace, 'Playing the PNG-traced groove', and 'Needle down — playing, 0:04.2 / 0:11.6'](docs/images/player.jpg)
 
-## Run it locally
+*The Player playing the bundled record from its PNG (Source: PNG trace), needle down in the groove.*
 
-Python 3.10+ and FFmpeg on your PATH:
+## Cut, open, play
 
-```sh
-python3 -m pip install -r requirements.txt
-python3 serve.py --port 8765
-```
+1. **Cut.** Give the Cutter a song, or use the bundled 11-second tune. It writes `name.png`, which is the record itself.
+2. **Open.** In the Player or the Room, open the PNG. Add its `name.groove.wav` and `name.json` if you have them.
+3. **Play.** Drop the needle.
 
-Then open:
+On GitHub Pages, cutting and playing both happen in your browser and nothing is uploaded. Run locally, the same pages use the Python server instead.
 
-- [Home](http://127.0.0.1:8765/)
-- [Cutter](http://127.0.0.1:8765/cutter)
-- [Player](http://127.0.0.1:8765/player)
-- [The Room](http://127.0.0.1:8765/room)
+![The Cutter page after a cut: the source panel with the 11-second tune and 4096 map size chosen, a lathe panel reading 'Cut complete. 4096 map, 180 mm at 45 RPM, 11.6 s', and a delivery panel listing original-tune.png, .groove.wav, .json and .preview.png with Save as buttons](docs/images/cutter.png)
 
-On Windows you can double-click `start-windows.bat`. Everything runs offline: the server stays on this computer and Three.js r169 is bundled in `static/vendor/three` (MIT licence included).
+*The Cutter after cutting the bundled tune: four files, and only the PNG is needed to play.*
 
-Finished jobs in `output/` are cleared after 7 days (`--keep-days 0` keeps everything); a failed cut or import leaves nothing behind.
+## The groove is the data
+
+<p>
+<img src="docs/images/groove-png.png" width="49%" alt="A greyscale crop of the record PNG: diagonal bright curved lines, most with a fine sawtooth wiggle along their length">
+<img src="docs/images/groove-inspect.jpg" width="49%" alt="The same record held up in Inspect: the groove band rendered as fine pale rings on black vinyl, curving across the frame">
+</p>
+
+*Left: an 18 mm-wide patch of `original-tune.png`, contrast stretched for display. Each bright line is one turn of the groove, and its wiggle is the sound. Right: the same record in Inspect.*
+
+- **`name.png` carries the sound.** Each pixel's value is the depth of the disc at that point. The Player follows the spiral, measures how far the groove swings sideways, and turns that swing back into audio (Source: **PNG trace**).
+- **`name.groove.wav` and `name.json` are a companion master.** They hold the same prepared groove as clean samples, saved at cut time. Source: **Vector** plays them, so you can compare them with the trace. A PNG on its own plays fine without them.
+- **`name.preview.png` is just a picture.** It is 8-bit and does not play.
+- **The 3D disc is an illustration.** Inspect shades the record with the PNG's real relief, so you are looking at the groove you heard, but the sound never comes from the rendering.
 
 ## The Room
 
-`room.html` (The Room on the home page) is the whole app in one scene: cut, play, keep and save records without leaving the parlor. Drop a song anywhere, or click the stack of blanks on the bench, and it is cut on the lathe (a picture dropped with it becomes the cover). Finished records, and any record you open, are filed in the crate and stay there between visits, kept in this browser. Carry a sleeve over the cabinet and let go when the rim glows to play it; put sleeves down anywhere on the floor, or on the post tray to save the record. Press `?` in the room for the keys. It works the same on GitHub Pages and with `serve.py` (open `/room`).
+![The Room: the phonograph on its cabinet in a parlour, a crate of sleeves on the left, and a workbench on the right with a cutting lathe and a stack of blank discs; a single control bar runs along the bottom](docs/images/room.jpg)
 
-## Cutter
+*The Room: the whole app in one scene, with the lathe on the bench at the right.*
 
-Choose an audio file (or the bundled 11-second tune) and press Cut. Records hold up to 4:30; a longer song is cut to its first 4:30 — past that the groove gets so tight the raster trace turns to buzz. You get:
+The Room puts cutting, playing and keeping records in one scene. Drop a song anywhere, or click the stack of blanks on the bench, and the lathe cuts it. A picture dropped with the song becomes its cover. Every record you cut or open is filed in the crate, and it is still there next visit in the same browser. Put a sleeve on the post tray to save the record's files.
 
-- `name.png` — the 16-bit height-map record
-- `name.groove.wav` and `name.json` — the vector groove master (keep these beside the PNG)
-- `name.preview.png` — an 8-bit viewing picture (not a playable record)
+A toy rides on the cabinet lid and dances to the music. The hula girl is the default, and a small brass pip on the cabinet front swaps in Garyck Arntzen's *Shiba in Clogs*.
 
-The song's title, artist and cover art are read from the file's tags (MP3, FLAC, M4A; anything else through FFmpeg when the local server is running). Pick a picture together with the audio (say `cover.jpg` from the album folder) to use that as the cover instead. They travel inside the record PNG, so the Player prints the cover on the label and the sleeve wherever the record is opened.
+## Controls
 
-## Player
+| To | Do this |
+|---|---|
+| Play a record from the crate | Drag its sleeve over the cabinet and let go when the rim glows. In this version (not on the live site yet) you can also click: hover a sleeve to raise it, click to slide the record half out, then click the record again. Esc puts it back. |
+| Start and stop | Use the **Drop/Lift needle** button or the tonearm. The position slider seeks. |
+| Scratch | While it plays, hold the record and drag round the centre. |
+| Inspect | With the needle up, click the record or use **Inspect record**. Drag to turn it, scroll to look closer, and press Esc to put it back. |
+| Speed | Use the 33⅓, 45 and 78 buttons, or the RPM control for fine speed. |
+| View | Right-drag to walk round, use the wheel to move closer, and press **Reset** to return to the default seat. |
 
-Open the 16-bit PNG, and add its `.groove.wav` and `.json` when you have them. Lift and drop the tonearm to stop and start, click a groove to drop the needle there, or hold the disc and drag to scratch. Loaded records wait in sleeves in the crate. Hover one to raise it, click to slide its record half out, and click the record again to play it: it slides out of the sleeve onto the platter (dragging it onto the platter works too). Esc or a click elsewhere puts it back. The record you were playing goes back into its own sleeve, wherever that sleeve lies.
+The Room also has keys: Space for the needle, I to inspect, 1–3 and [ ] for speed, Home to reset the view, and **?** to list every key. **Picture** sets the render quality. Auto picks High, Balanced or Low for your GPU.
 
-A PNG on its own is traced from its pixels and sounds deliberately lo-fi. This is a digital stylus.
+## Run it locally
 
-One toy rides on the front-left corner of the cabinet lid and dances to the record: the spring-mounted hula girl by default, or Garyck Arntzen's *Shiba in Clogs*. A small brass pip low on the right of the cabinet front swaps between them (it pops the new toy in and remembers the choice in `localStorage` as `vinyl-toy`). The shiba's butt reacts to what the record is actually playing under the needle: kicks jolt it up, snare and clap cracks whip it sideways, held bass notes lean it slowly toward where the bass line's pitch moves, busy passages make the spring snappier, and quiet passages let him settle. His legs and clogs stay put; the wobble hinges in the undercarriage just behind his legs. Click him for a wobble. URL parameters tune it: `shibaAmp` (overall size, 1.35), `shibaLR` (side-to-side, 1), `shibaUD` (up-down, 0.85), `shibaMode` (`react`, the default, or the older beat-driven `fig8`, `alt` and `beat`), `shibaFig` (sway strength, 1), `shibaClamp` (largest deflection, 0.55, max 1) and `shibaChaos` (0 to 1). His fur and meshes are baked ahead of time into `static/shiba.bin` by `node tools/bake-shiba.mjs`, so the page does no mesh building at start-up.
+You need Python 3.10+ and [FFmpeg](https://ffmpeg.org/) on your PATH. From the project folder:
 
-The camera stays where you put it: swapping records, inspecting one and putting it back never reset the view (Reset view glides back to the default seat). **Picture** sets the rendering quality — Auto picks High (ambient occlusion, depth of field, bloom), Balanced or Low for your GPU and steps down if frames get slow. The scene only redraws when something moves, so an idle player uses almost no GPU.
+```sh
+python3 -m pip install -r requirements.txt   # numpy, scipy, Pillow
+python3 serve.py --port 8765
+```
 
-## How a record works
+Then open <http://127.0.0.1:8765/room>. The Cutter is at `/cutter` and the Player is at `/player`. On Windows you can double-click `start-windows.bat` instead.
 
-A vinyl record stores sound as shape. In a mastering studio, a cutting lathe turns a soft lacquer disc while a cutting stylus moves slowly from the rim towards the centre, carving one continuous spiral groove. The amplified audio drives the stylus, so as it cuts it also swings from side to side, and the groove's wiggles follow the waveform: loud sounds make wide swings and high notes make tight ones. In a mono record this sideways (lateral) movement is the whole signal. Stereo records tilt the two channels 45° each way, one on each wall of the groove (the "45/45" system). Both walls moving together is a sideways swing, which is why a mono player still plays stereo records, and the difference between the channels shows up as the stylus moving up and down.
+The server stays on your computer, and Three.js is bundled, so nothing is fetched from the network. Finished cuts are kept in `output/` for 7 days; `--keep-days 0` keeps them all.
 
-The disc turns at a fixed speed: 33⅓ RPM for LPs, 45 for singles and 78 for old shellac. Because the speed is fixed, the groove passes under the stylus faster near the rim than near the centre. On a 12-inch LP that is roughly half a metre a second at the start and about 0.2 m/s at the end. Near the label, the same waveform has to fit into a shorter length of groove, so its wiggles get squeezed tighter and are harder for a round stylus tip to follow. That is why the inner grooves lose treble detail and distort first, and why mastering engineers often put quieter songs at the end of a side.
+Tests: `python3 verify.py`, `python3 test-http.py`, and `node test-vinyl-core.cjs`, `test-player.cjs`, `test-player-pages.cjs`, `test-inspect-height.cjs`, `test-tags.cjs` (needs FFmpeg) and `test-view.mjs`.
 
-To play the record, a diamond stylus rides in the groove and is pushed back and forth by its walls. The cartridge turns that movement into a small electrical signal, usually with a magnet and coils, and the amplifier makes it loud enough to hear. Records are also cut with the RIAA curve: bass is turned down (so its big swings don't crowd the grooves together) and treble is turned up (so it sits above surface noise), and the phono preamp applies the exact opposite curve on playback.
+## What it does and doesn't do
 
-### How Vinyl Sim mirrors it
+- **Mono only.** The groove swings sideways only, like a mono record. Stereo input is mixed down.
+- **Lo-fi on purpose.** Audio is resampled to 16 kHz and band-limited, at most 6.5 kHz and lower towards the label, the way real inner grooves lose treble. The PNG trace is a digital stylus reading pixels, not a hi-fi transfer.
+- **4:30 at most.** A longer song is cut to its first 4:30, because past that the spiral packs too tightly for the PNG to hold. Clips up to 40 s become a 180 mm disc (7-inch size), and anything longer becomes a 300 mm disc (12-inch size). Clips up to 2:00 are cut at 45 RPM, and longer ones at 33⅓.
+- **Not RIAA.** A simple reversible treble lift stands in for the RIAA curve.
+- **Your records live in this browser.** Clearing the site's data empties the crate.
+- **The 3D view needs WebGL 2.** Without it, playback still works from the controls.
 
-The Cutter plays the part of the lathe. Your audio becomes one spiral groove drawn into a 16-bit greyscale PNG, where each pixel's brightness is the height of the disc surface at that point. As on a mono record, the groove swings sideways with the waveform. Short pieces are cut at 45 RPM and longer ones at 33⅓, and a reversible treble lift (a simple presence shelf, not the full RIAA curve) is undone on playback. The picture has a fixed number of pixels, so the inner turns have fewer pixels to hold each wiggle, just as real inner grooves have less length. The Cutter models this with a cutoff that falls as the groove nears the label, so the end of a record sounds a little duller than the start.
+## How it maps to a real record
 
-The Player is the stylus. It follows the spiral back through the PNG, reads how far the groove has moved sideways at each point and turns that movement back into sound. Set Source to Vector to hear the groove master saved alongside the PNG instead, and switch between the two to compare. With the needle lifted, Inspect picks the record off the platter in 3D, made from the real height map, so you can turn it and look closely at the groove you just heard.
+A cutting lathe carves one spiral groove into a spinning disc, and on a mono record the groove's sideways swing is the waveform. The Cutter does the same thing in pixels: brightness is depth, and the swing follows the sound. Because the disc turns at a fixed speed, the inner turns have less length for each second of sound. The PNG has the same problem with fewer pixels per wiggle near the label, so the end of a side sounds a little duller than the start, as on vinyl. The Player plays the stylus: it rides the spiral back out of the PNG.
 
-## Tests
+## Credits
 
-`python3 verify.py` (pipeline), `python3 test-http.py` (server), and `node test-vinyl-core.cjs`, `node test-player.cjs`, `node test-player-pages.cjs`, `node test-inspect-height.cjs`, `node test-tags.cjs` (tags and cover art; needs FFmpeg), `node test-view.mjs` (browser code, mocked DOM).
+Made by [Garyck Arntzen](https://www.garyckarntzen.com/) · [@_mintydoge](https://x.com/_mintydoge). *Shiba in Clogs* is by Garyck Arntzen.
 
-## Credit
-
-[Garyck Arntzen](https://www.garyckarntzen.com/) · [@_mintydoge](https://x.com/_mintydoge)
+Bundled: [Three.js](https://threejs.org/) r169 (MIT, `static/vendor/three/LICENSE.txt`), and the Jost and Manrope fonts (SIL Open Font License, `static/fonts/`). The Python packages in `requirements.txt` are installed separately under their own licences.
