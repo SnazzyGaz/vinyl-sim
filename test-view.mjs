@@ -184,20 +184,38 @@ try {
    assert.ok(context.api.getSleevePop()?.id===j.userData.sleeveId,'click holds a half-out pop');
    assert.ok(Math.abs(j.userData.peek-.5)<.08,`peek sits near half-out (got ${j.userData.peek})`);
    assert.ok(Math.hypot(j.position.x-j.userData.home.p.x,j.position.y-j.userData.home.p.y)<1,'popped jacket XY stays in its crate slot');assert.ok(j.position.z-j.userData.home.p.z>context.api.getR()*.1,'popped jacket keeps the hover bob lift');
-   // Click again: cancels the hold.
-   canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointerup',event(sx,sy,0));for(let i=0;i<60;i++)tick();
-   assert.equal(context.api.getSleevePop(),null,'second click tucks it back');
-   assert.ok(j.userData.peek<.05,'peek tucked in after cancel');
+   // A click on empty room tucks it back.
+   canvas.emit('pointerdown',event(3,3,0));canvas.emit('pointerup',event(3,3,0));for(let i=0;i<60;i++)tick();
+   assert.equal(context.api.getSleevePop(),null,'a click elsewhere tucks it back');
+   assert.ok(j.userData.peek<.05,'peek tucked in after cancel');assert.equal(swaps.length,0,'tucking back never plays');
    // Click to pop, then Esc cancels.
    canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointerup',event(sx,sy,0));for(let i=0;i<40;i++)tick();
    assert.ok(context.api.getSleevePop(),'popped before Esc');
    win.emit('keydown',{key:'Escape'});for(let i=0;i<40;i++)tick();
    assert.equal(context.api.getSleevePop(),null,'Esc clears the half-out hold');
-   // Drag onto the platter: vinyl.swapTo(id); jacket never leaps.
+   // Two clicks, no drag: the first slides it half out, the second sends it to the platter (once).
+   canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointerup',event(sx,sy,0));
+   canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointerup',event(sx,sy,0));tick();
+   assert.equal(swaps.length,0,'a double-click before it is out does not play it');assert.ok(context.api.getSleevePop()?.id===j.userData.sleeveId,'still half out');
+   for(let i=0;i<40;i++)tick();
+   const rimBefore=vm.runInContext('!!pendingSwapFrom',context);assert.equal(rimBefore,false);
+   const peekAt=new real.Vector3();j.userData.peekObj.getWorldPosition(peekAt);const [vx,vy]=toScreen(peekAt);    // click the exposed vinyl itself
+   canvas.emit('pointerdown',event(vx,vy,0));canvas.emit('pointerup',event(vx,vy,0));tick();
+   assert.deepEqual(swaps,[j.userData.sleeveId],'second click on the half-out vinyl: vinyl.swapTo(id)');assert.equal(placements.length,before,'no needle drop or scratch from the clicks');
+   assert.equal(context.api.getSleevePop(),null,'the send clears the pop');assert.ok(vm.runInContext('!!pendingSwapFrom',context),'the record leaves along its sleeve-exit path');
+   assert.ok(j.position.distanceTo(j.userData.home.p)<context.api.getR()*.35,'its sleeve stays in the crate');
+   canvas.emit('pointerup',event(vx,vy,0));tick();assert.equal(swaps.length,1,'a stray pointerup does not send it twice');
+   vm.runInContext('pendingSwapFrom=null;pendingSwapTilt=0;pendingExtract=null;',context);
+   // Drag onto the platter still works: vinyl.swapTo(id); jacket never leaps.
    const hz=metadata.thickness_mm+context.api.getR()*.35,[px,py]=toScreen(new real.Vector3(0,0,hz));
    canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointermove',event((sx+px)/2,(sy+py)/2,0));canvas.emit('pointermove',event(px,py,0));canvas.emit('pointerup',event(px,py,0));tick();
-   assert.deepEqual(swaps,[j.userData.sleeveId],'dropped on the platter: vinyl.swapTo(id)');assert.equal(placements.length,before);
+   assert.deepEqual(swaps,[j.userData.sleeveId,j.userData.sleeveId],'dropped on the platter: vinyl.swapTo(id)');assert.equal(placements.length,before);
    assert.equal(context.api.getSleevePop(),null,'swap clears any pop');
+   // A drag that starts on a popped record and wanders (an orbit-ish gesture) does not play it.
+   canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointerup',event(sx,sy,0));for(let i=0;i<40;i++)tick();
+   canvas.emit('pointerdown',event(sx,sy,0));canvas.emit('pointermove',event(sx+40,sy-30,0));canvas.emit('pointerup',event(sx+40,sy-30,0));tick();
+   assert.equal(swaps.length,2,'dragging away from a popped record never plays it');win.emit('keydown',{key:'Escape'});for(let i=0;i<40;i++)tick();
+   vm.runInContext('pendingSwapFrom=null;pendingSwapTilt=0;pendingExtract=null;',context);
    // Rebuild crate sleeves (no floor rests). Offer the frontmost non-empty jacket — crate picks hit the front one.
    const Rr=context.api.getR();
    win.emit('vinyl-sleeves',{detail:{current:'a',sleeves:[{id:'b',label:'Second'},{id:'c',label:'Third'}]}});tick();
@@ -243,7 +261,7 @@ try {
    assert.ok(clearances.every(c=>c.off<3),'every extract frame clears the sleeve walls (on-axis slide)');
    assert.ok(worst>.5,`record from the offered sleeve clears the machine (closest ${worst.toFixed(2)} mm to ${who})`);
    close(disc.position,new real.Vector3());assert.ok(Math.abs(disc.rotation.x)<1e-9,'and lands flat');}
-  assert.equal(lifts,0);assert.equal(swaps.length,2);
+  assert.equal(lifts,0);assert.equal(swaps.length,3);
   // Tonearm is the needle switch: a click on the reproducer lifts a playing needle; another drops it.
   {vinyl.down=true;const tipObj=context.api.armParts[4];tick();scene.updateMatrixWorld(true);const pl=placements.length;tapObj(tipObj);assert.equal(lifts,1,'arm click lifts');assert.equal(vinyl.down,false);
    tapObj(tipObj);assert.equal(drops,1,'arm click drops');assert.equal(vinyl.down,true);
@@ -357,5 +375,5 @@ try {
      for(const o of fobs){l.copy(o.v).applyMatrix4(inv);const r=Math.hypot(l.x,l.y);if(r<3.7||r>Rr+.5)continue;const gg=l.z<0?-l.z:l.z>2.5?l.z-2.5:-1;if(gg<fw){fw=gg;fwho=o.name;}}}
     assert.equal(og.children.length,0,'filed away');assert.ok(fw>.5,`lathe to crate clears the machine and the bench (closest ${fw.toFixed(2)} mm to ${fwho})`);
     assert.equal(b.blank.visible,true,'a fresh blank is back on the lathe');assert.equal(rc.room.disc.children.length,onPlatter,'the record on the platter is untouched');}}
-  console.log('PASS: room mode: bench and lathe built in view, the head cuts in, a fresh cut travels lathe to platter (or is filed lathe to crate) clear of everything; click-to-pop sleeves stay in the crate (hover bob kept, click half-outs, Esc cancels, drag-to-platter swaps); an offered sleeve stays home with the record peeking and the rim lit; records never pass through the horn, arm, spindle or hula girl when lifted out, put back, swapped or first loaded; persistent camera across mount/swap/inspection with eased reset; outgoing record glides off and is freed; draw-on-demand idles; early-demo/module race caught; curved title tangent glyphs; inspection pickup/rotation/Escape/reload interlock, solid PVC, room/shadows/neutral tone mapping; horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, room-wall/ceiling soft clamp, sleeve slide-out extract, sleeves (fallback Deco front, click half-out / Esc cancel, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; hula girl default, shiba in her corner, one toy at a time, brass pip swap with pop; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, window light and finished room, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
+  console.log('PASS: room mode: bench and lathe built in view, the head cuts in, a fresh cut travels lathe to platter (or is filed lathe to crate) clear of everything; click-to-pop sleeves stay in the crate (hover bob kept, click half-outs, a second click on it plays it once, Esc or a click elsewhere cancels, drag-to-platter still swaps); an offered sleeve stays home with the record peeking and the rim lit; records never pass through the horn, arm, spindle or hula girl when lifted out, put back, swapped or first loaded; persistent camera across mount/swap/inspection with eased reset; outgoing record glides off and is freed; draw-on-demand idles; early-demo/module race caught; curved title tangent glyphs; inspection pickup/rotation/Escape/reload interlock, solid PVC, room/shadows/neutral tone mapping; horn/camera world vectors, unity reset distance, transformed horn and radius rebuild; clamped front-only orbit and zoom, room-wall/ceiling soft clamp, sleeve slide-out extract, sleeves (fallback Deco front, click half-out / Esc cancel, drag-onto-platter → swapTo), 3D volume/speed/source controls, tonearm lift/drop switch, hula girl envelope + rebuild survival; hula girl default, shiba in her corner, one toy at a time, brass pip swap with pop; real OrbitControls right-drag orbit, wheel/distance clamps, reset, left grab → grabStart/grabEnd at the raycast point after a moved camera, orbit does not lift playback; preview ring/label separation, window light and finished room, empty-platter placeholder removed on load, red label kept for loaded records, rigid constant-length tonearm sweeping on a fixed pivot. Mocked renderer/DOM, not WebGL.');
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

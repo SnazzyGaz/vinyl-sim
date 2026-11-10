@@ -1117,9 +1117,10 @@ renderer.domElement.addEventListener('pointerdown',e=>{
  if(sleevePop){clearSleevePop();setCursor('');}
  if(!v.record||dropIn)return;const p=hit(e);if(!p||Math.hypot(p.x,p.y)>R+1)return;if(!v.down){beginInspection();return;}drag=true;renderer.domElement.setPointerCapture?.(e.pointerId);v.grabStart(p.x,p.y);
 });
-/* Click-to-pop sleeves: jackets stay in the crate. A click slides the record half
-   out and holds it; drag that toward the platter to offer a swap (rim glows); Esc
-   or a click elsewhere tucks it back. Geometry never leaves the crate rails. */
+/* Click-to-pop sleeves: jackets stay in the crate. Hover raises a sleeve; a click slides
+   its record half out and holds it; a second click on it sends it to the platter (a drag
+   onto the platter still works too). Esc or a click elsewhere tucks it back. Geometry
+   never leaves the crate rails. */
 function hint(text){if(typeof CustomEvent==='function')window.dispatchEvent?.(new CustomEvent('vinyl-hint',{detail:{text}}));}
 function setCursor(c){if(renderer.domElement.style)renderer.domElement.style.cursor=c;}
 const ROOM_X=1080,ROOM_Y0=-1080,ROOM_Y1=420;
@@ -1130,14 +1131,14 @@ function moveSleeve(e){
  // Jacket pose stays at home; only arming / peek changes.
  const home=s.jacket.userData.home;s.pose=home?{p:home.p.clone(),q:home.q.clone()}:presentPose();
  s.c=null;s.rack=false;s.post=false;
- if(s.armed!==wasArmed)hint(s.armed?'Let go — it will slide out of its sleeve onto the platter.':(sleevePop?'Drag it onto the gramophone to play · Esc to put it back':''));
+ if(s.armed!==wasArmed)hint(s.armed?'Let go — it will slide out of its sleeve onto the platter.':(sleevePop?'Click it to play · Esc to put it back':''));
  setCursor(s.armed?'copy':(sleevePop?'grab':'grabbing'));invalidate();
 }
 renderer.domElement.addEventListener('pointermove',e=>{
  const v=window.vinyl;
  if(!sleeveDrag&&!armHold&&!drag&&!inspect.active&&e.buttons===0){const p=pickAt(e);setCursor(p?'grab':'');
   const j=p?.kind==='sleeve'&&p.obj.userData.racked?p.obj:null,id=j?j.userData.sleeveId:null;
-  if(id!==hoverId){hoverId=id;if(j){j.userData.loadCover?.();hint(j.userData.empty?`${j.userData.label||'Record'}: its sleeve (playing now)`:`${j.userData.label||'Record'} — click to slide it half out, then drag to the gramophone`);}else if(!sleevePop)hint('');invalidate(2);}}
+  if(id!==hoverId){hoverId=id;if(j){j.userData.loadCover?.();hint(j.userData.empty?`${j.userData.label||'Record'}: its sleeve (playing now)`:`${j.userData.label||'Record'} — click to slide it half out, click again to play it`);}else if(!sleevePop)hint('');invalidate(2);}}
  if(inspect.active){if(inspect.drag&&inspect.phase==='held'){
   const dx=e.clientX-inspect.drag.x,dy=e.clientY-inspect.drag.y;inspect.drag={x:e.clientX,y:e.clientY};
   const right=new THREE.Vector3(1,0,0).transformDirection(camera.matrixWorld),up=new THREE.Vector3(0,1,0).transformDirection(camera.matrixWorld);
@@ -1149,6 +1150,18 @@ renderer.domElement.addEventListener('pointermove',e=>{
  if(sleeveDrag){moveSleeve(e);return;}
  if(!drag)return;const p=hit(e);if(p)v.grabMove(p.x,p.y);
 });
+const POP_HINT=j=>`${j.userData.label||'Record'} — half out · click it again to play · Esc or click elsewhere to put it back`;
+// Send a crate record to the platter: it slides out of its sleeve (which stays in the crate)
+// and onto the spindle, the record that was playing going back to its own sleeve. Once only:
+// ignored while a swap is already under way.
+function sendSleeve(j,id){
+ const v=window.vinyl;if(!v.swapTo||dropIn||outgoing.children.length)return false;
+ scene.updateMatrixWorld(true);armSwapFromSleeve(j);
+ if(j.userData.peekObj){j.userData.peek=0;j.userData.peekObj.visible=false;}
+ sleevePop=null;sleeveRest.delete(id);hint('');
+ if(!v.swapTo(id)){pendingSwapFrom=null;pendingSwapTilt=0;pendingExtract=null;return false;}
+ return true;
+}
 function endPointer(e,cancel=false){
  if(inspect.active){inspect.drag=null;return true;}
  const v=window.vinyl;
@@ -1163,20 +1176,18 @@ function endPointer(e,cancel=false){
   if(!s.moved){
    // Click: toggle half-out hold. Empty sleeves (playing now) just show a hint.
    if(s.empty){hint(`${j.userData.label||'Record'}: its sleeve (playing now)`);invalidate();return true;}
-   if(sleevePop?.id===s.id){clearSleevePop();hint('');}
-   else{sleevePop={id:s.id,jacket:j};j.userData.loadCover?.();hint(`${j.userData.label||'Record'} — half out · drag to the gramophone · Esc to put back`);}
+   // Second click on the half-out record (or its sleeve) plays it: the same slide-out-and-swap
+   // a drag onto the platter does. Until the pop is visibly out, a stray extra click is ignored.
+   if(sleevePop?.id===s.id){if((j.userData.peek||0)>=.35)sendSleeve(j,s.id);invalidate(2);return true;}
+   sleevePop={id:s.id,jacket:j};j.userData.loadCover?.();hint(POP_HINT(j));
    invalidate(2);return true;
   }
   if(s.armed&&!s.empty&&v.swapTo){
    // Dragged onto the platter: slide out of the crate sleeve onto the spindle.
-   scene.updateMatrixWorld(true);armSwapFromSleeve(j);
-   if(j.userData.peekObj){j.userData.peek=0;j.userData.peekObj.visible=false;}
-   sleevePop=null;sleeveRest.delete(s.id);
-   hint('');
-   if(!v.swapTo(s.id)){pendingSwapFrom=null;pendingSwapTilt=0;pendingExtract=null;}
+   sendSleeve(j,s.id);
   }else{
    // Dragged off the platter: keep a prior half-out hold, otherwise tuck back.
-   if(sleevePop?.id===s.id)hint(`${j.userData.label||'Record'} — half out · drag to the gramophone · Esc to put back`);
+   if(sleevePop?.id===s.id)hint(POP_HINT(j));
    else{clearSleevePop();hint('');}
   }
   invalidate();return true;}

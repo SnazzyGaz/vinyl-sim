@@ -42,7 +42,7 @@ The song's title, artist and cover art are read from the file's tags (MP3, FLAC,
 
 ## Player
 
-Open the 16-bit PNG, and add its `.groove.wav` and `.json` when you have them. Lift and drop the tonearm to stop and start, click a groove to drop the needle there, or hold the disc and drag to scratch. Loaded records wait in sleeves. Pick one up and carry it anywhere: let go on the floor and it stays there, lying flat; carry it over the cabinet and it is offered to the platter — the record slides half out and the rim glows — and letting go there plays it. The record you were playing goes back into its own sleeve, wherever that sleeve lies.
+Open the 16-bit PNG, and add its `.groove.wav` and `.json` when you have them. Lift and drop the tonearm to stop and start, click a groove to drop the needle there, or hold the disc and drag to scratch. Loaded records wait in sleeves in the crate. Hover one to raise it, click to slide its record half out, and click the record again to play it: it slides out of the sleeve onto the platter (dragging it onto the platter works too). Esc or a click elsewhere puts it back. The record you were playing goes back into its own sleeve, wherever that sleeve lies.
 
 A PNG on its own is traced from its pixels and sounds deliberately lo-fi. This is a digital stylus.
 
