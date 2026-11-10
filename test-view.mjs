@@ -127,7 +127,7 @@ try {
   // Preview is a ring, not a full disc hidden behind a nearly-coplanar label.
   assert.equal(disc.getObjectByName('placeholder-disc'),undefined);assert.equal(disc.children[0].geometry.type,'RingGeometry');
   assert.equal(disc.children[0].geometry.parameters.innerRadius,metadata.label_radius_mm);
-  const assertBlack=mat=>{assert.ok(mat.color.getHex()<=0x202020,'black pressing (no paint in Node)');assert.equal(mat.metalness,0);assert.ok(mat.anisotropy>0,'anisotropic groove sheen');assert.ok(mat.userData.groove.uPitch.value===metadata.pitch_mm,'groove band from the spiral metadata');assert.equal(mat.vertexColors,false);assert.equal(mat.map,null);assert.equal(mat.roughnessMap??null,null,'no rotating roughness detail under the highlight');assert.ok(mat.bumpMap&&mat.bumpScale===0,'constant bump slot, flat at rest');};
+  const assertBlack=mat=>{assert.ok(mat.color.getHex()<=0x202020,'black pressing (no paint in Node)');assert.equal(mat.metalness,0);assert.ok(mat.anisotropy>0,'anisotropic groove sheen');assert.ok(mat.userData.groove.uPitch.value===metadata.pitch_mm,'groove band from the spiral metadata');assert.equal(mat.vertexColors,false);assert.equal(mat.map,null);assert.equal(mat.roughnessMap??null,null,'no rotating roughness detail under the highlight');assert.equal(mat.bumpMap??null,null,'no bump map: the groove surface is the shader\'s own');assert.ok(mat.clearcoat>0,'the lands are their own mirror lobe');assert.ok(mat.userData.groove.uGHw.value===(metadata.groove_width_mm?metadata.groove_width_mm/2:metadata.pitch_mm*.25)&&mat.userData.groove.uGDepth.value===(metadata.groove_depth_mm??.3),'the cut\'s own V: width and depth from the metadata');};
   assertBlack(disc.children[0].material);
   const label=disc.getObjectByName('vinyl-label');
   assert.equal(label.userData.title,'Original tune');assert.equal(label.material.color.getHex(),0xc42420); // loaded record keeps the red paper label
@@ -318,11 +318,11 @@ try {
    assert.equal(context.api.scene.getObjectByName('outgoing-records').children.length,0,'and is freed once it arrives');
    assert.ok(context.api.phonograph.getObjectByName('hula-girl'),'hula girl survives a vinyl-record rebuild');assert.equal(context.api.getR(),100);assert.equal(disc.getObjectByName('vinyl-label').userData.title,'Second pressing');close(spatial.mouth,new real.Vector3(-20,27,138));assert.ok(Math.abs(spatial.refDistance-camera.position.distanceTo(spatial.mouth))<1e-7);
    assert.ok(context.api.sleeves.children.some(o=>o.name==='sleeve'),'sleeves rebuilt at the new size');
-   // groove sheen bands: built from this record's own buffer, one texel per turn x 1/64 revolution, mip-filtered
-   {const u=disc.getObjectByName('vinyl-grooves').material.userData.groove,t=u.uBand.value,m=vinyl.record.metadata,T=m.lead_in_turns+m.duration_sec*m.rpm_cut/60+m.lead_out_turns,W=Math.ceil(T);
-    assert.ok(t.isDataTexture,'the record gets its own bands');assert.equal(t.image.width,W);assert.equal(t.image.height,64);assert.equal(u.uBandTurns.value,W);
-    assert.ok(t.generateMipmaps&&t.minFilter===real.LinearMipmapLinearFilter,'mip-filtered: no moire at distance');
-    const row=Array.from(t.image.data.slice(0,W));assert.ok(row.slice(1,W-2).every(v=>v>0),'the music shows on every played turn');assert.equal(row[W-1],0,'the silent lead-out stays glossy');}
+   // the record's own groove surface: built off the UI thread (no Worker here), so until then the same
+   // V groove sits centred on the nominal spiral, never the old record's
+   {const u=disc.getObjectByName('vinyl-grooves').material.userData.groove,m=vinyl.record.metadata;
+    assert.equal(u.uGA.value,1);assert.equal(u.uGT.value,1);assert.ok(u.uGroove.value.isDataTexture&&u.uGroove.value.image.width===1,'no wander until the record\'s own lands');
+    assert.ok(Math.abs(u.uGEnd.value-(m.lead_in_turns+m.duration_sec*m.rpm_cut/60+m.lead_out_turns))<1e-9,'the groove ends where the spiral does');}
    vinyl.buffer=null;}
   // Needle-up pickup is inspection, never scratch. Playback stays locked until landing.
   {vinyl.down=false;const {inspect}=context.api;const before=placements.length;reset.emit('click');for(let i=0;i<80;i++)tick();
