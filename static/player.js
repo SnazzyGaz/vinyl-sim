@@ -309,9 +309,9 @@ async function openParts({png,vector,json},label,keepId,opts){
  if(opts?.play!==false)lift();status(keepId?'Taking it off the shelf: tracing the groove…':vector?'Opening the record and its groove master…':'Opening the record…','busy');
  label=label||(png.name||'record').replace(/\.png$/i,'');
  let data;
- if(!(await localApi())){data=await importInBrowser({png,vector,json});data.heightmapFile=png;await load(data,label,keepId,opts);}
+ if(!(await localApi())){data=await importInBrowser({png,vector,json});data.heightmapFile=png;data.grooveFile=vector||null;await load(data,label,keepId,opts);}
  else{const form=new FormData();form.append('file',png);if(vector)form.append('vector',vector);if(json)form.append('metadata',json);
-  data=await request('/api/import',form);data.heightmapFile=png;await load(data,label,keepId,opts);}
+  data=await request('/api/import',form);data.heightmapFile=png;data.grooveFile=vector||null;await load(data,label,keepId,opts);}
  if(!keepId)keepOnShelf(data.id||data.base,library.get(data.id||data.base)?.label||label,data,{png,groove:vector,json});
  return data;
 }

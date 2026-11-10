@@ -1,18 +1,27 @@
 /* Needle view: a small engraved close-up of the stylus sitting in the groove, top right.
-   It reads the same groove the player is playing: the active source's samples at the
-   player's own read head (window.vinyl.time()), so it stops, lifts and runs backwards
-   with the record. Nothing here touches the audio.
+   It reads the same groove the player is playing, at the player's own read head
+   (window.vinyl.time()), so it stops, lifts and runs backwards with the record. Nothing
+   here touches the audio.
 
-   Groove (the Cutter's equation, same as the needle-demo prototype):
-     turns(t)  = lead_in + t * rpm/60
-     centre    = r_start - pitch*turns + x(t)*amp_mm       (x = lateral displacement, +rim)
-     depth     = groove_depth * max(0, 1 - |r - centre| / (groove_width/2))   (V profile)
-   x comes from the playback buffer with the Cutter's presence shelf put back on, which
-   undoes the player's de-emphasis: for the vector source that is the groove master again;
-   for the PNG source it is the trace read from the pixels (so both views show what that
-   source's stylus reads). Ideal contact, mono: a spherical tip resting on both walls.
-   Drawn at true scale, the same both ways; nothing is exaggerated.
-   Costs nothing while hidden: no samples prepared, no frames drawn. */
+   What it draws is the record itself, not a picture rebuilt from the sound:
+     PNG source    the 16-bit height map's own pixels (decoded losslessly in a worker). Every
+                   depth drawn is one stored pixel (nearest; the pixel grid shows as steps),
+                   and the stylus sits where the PNG decoder reads it: the depth-weighted
+                   centroid across the groove (vinyl-core decodeTrace before its whole-record
+                   DC removal and filtering).
+     Vector source the groove master (heightmap.groove.wav, checked against the metadata's
+                   sha256) through the Cutter's own equation, point-exact:
+                     turns = k + φ/2π,  centre = r_start - pitch*turns + x(t)*amp_mm,
+                     depth = groove_depth * max(0, 1 - |r - centre| / (groove_width/2)).
+   Where the record carries neither (the bundled demo), the view falls back to the old
+   reconstruction from the playback audio and says so in its label.
+   Field: the surface around the tip in the tip's own frame (across the record, and upstream
+   along the groove with its true curvature); section: the same samples cut through the tip;
+   the tip (an illustrative radius, a quarter of the half width) rests on that section, at
+   the lowest height that clears every sample. Each frame is one exposure: the real surface
+   averaged over the instants since the last frame, so fast play reads as a steady blur and a
+   held record as the exact groove. True scale, the same both ways; nothing is exaggerated.
+   Costs nothing while hidden: nothing is read, decoded or drawn until it is shown. */
 (() => {
 const TAU=Math.PI*2;
 
@@ -41,30 +50,71 @@ function makeModel(m,x){
  const fs=m.sample_rate||16000,rpm=m.rpm_cut,lead=m.lead_in_turns||0,start=m.r_start_mm,pitch=m.pitch_mm,amp=m.amp_mm;
  const hw=m.groove_width_mm/2,depth=m.groove_depth_mm,N=x.length,last=N-1,rev=60/rpm;
  const end=lead+m.duration_sec*rpm/60+(m.lead_out_turns||0);
- const xs=tp=>{const idx=tp*fs;if(!(idx>=0&&idx<=last))return 0;const j=Math.floor(idx);return j===last?x[last]:x[j]+(x[j+1]-x[j])*(idx-j);};
+ const xs=tp=>{const idx=tp*fs;if(!(idx>=0&&idx<=last))return 0;const j=Math.floor(idx);return j===last?x[last]:x[j]+(x[j+1]-x[j])*(idx-j);};xs.x=x;xs.n=N;
  const turnsAt=t=>lead+t*rpm/60, radius=t=>start-pitch*turnsAt(t), speed=t=>TAU*radius(t)*rpm/60; // mm of groove per program second
  // Centre of turn k (0 = under the stylus, +1 = next turn in, toward the label), u mm upstream,
  // in the stylus frame: w across the record (+ toward the rim), 0 = this turn's nominal radius.
  function centre(k,u,t){const Rc=radius(t),turns=turnsAt(t)+k+u/(TAU*Rc);if(turns<0||turns>end)return null;
   return -k*pitch+amp*xs(t+k*rev+u/speed(t))-u*u/(2*Rc);}
- const rho=hw*.25,slope=depth/hw,sec=Math.sqrt(1+slope*slope);
- const tip={rho,centreY:-depth+rho*sec,contactDelta:rho*slope/sec,contactY:-depth+rho*slope*slope/sec};
+ const tip={rho:hw*.25}; // an illustrative tip radius (a quarter of the groove's half width); its rest is computed on the real section
  function stylus(t){return amp*xs(t);}
- function swept(t0,t1){const a=Math.min(t0,t1)*fs,b=Math.max(t0,t1)*fs;let lo=Math.min(xs(t0),xs(t1)),hi=Math.max(xs(t0),xs(t1));
-  for(let i=Math.ceil(a);i<=Math.floor(b)&&i-a<200000;i++){const v=i>=0&&i<=last?x[i]:0;if(v<lo)lo=v;if(v>hi)hi=v;}return [lo*amp,hi*amp];}
- // Where turn k sits relative to the stylus tip, u mm upstream, over one exposure (program time t0..t1, the
- // span since the last frame): lo/hi = the range it covered, mean = its average. Zero span = the instant.
- const eb=new Float64Array(49);let ek='';
- function exposure(k,u,t0,t1){const c1=centre(k,u,t1);if(c1===null)return null;
-  const a=Math.min(t0,t1),b=Math.max(t0,t1),tm=(a+b)/2,off=k*rev+u/speed(tm),bend=-k*pitch-u*u/(2*radius(tm));
-  const n=Math.min(48,Math.floor((b-a)*fs)); // 48 instants per exposure: enough for a steady range and average
-  if(n<1){const v=c1-stylus(t1);return {lo:v,hi:v,mean:v};}
-  if(ek!==a+'|'+b+'|'+n){ek=a+'|'+b+'|'+n;for(let i=0;i<=n;i++)eb[i]=xs(a+(b-a)*i/n);} // the tip's own path, once per frame
-  let lo=Infinity,hi=-Infinity,sum=0;for(let i=0;i<=n;i++){const v=bend+amp*(xs(a+(b-a)*i/n+off)-eb[i]);if(v<lo)lo=v;if(v>hi)hi=v;sum+=v;}
-  return {lo,hi,mean:sum/(n+1)};}
- function profile(w,t,offs){let best=0;for(let k=-2;k<=2;k++){const c=offs?offs[k+2]:centre(k,0,t);if(c===null||c===undefined)continue;const v=1-Math.abs(w-c)/hw;if(v>best)best=v;}return -depth*best;}
- return {m,fs,amp,hw,depth,pitch,rev,end,xs,turnsAt,radius,speed,centre,exposure,tip,stylus,swept,profile,pixelMm:2*m.disc_radius_mm/((m.image_size||4096)-1)};
+ return {m,fs,amp,hw,depth,pitch,rev,end,xs,turnsAt,radius,speed,centre,tip,stylus};
 }
+/* ---------- surfaces: the groove as the record itself holds it ----------
+   depth(X,Y): mm below the land at a point of the record plane (X = r cos θ, Y = r sin θ, θ the
+   spiral's own angle, so turns = θ/2π); lateral(t): where the stylus centre sits at program time t,
+   in mm from the nominal spiral. */
+function rint(v){const f=Math.floor(v),d=v-f;if(d<.5)return f;if(d>.5)return f+1;return f%2===0?f:f+1;}
+// Vector master: the Cutter's own definition (vinyl-core rasterize), point-exact, without its 2x2 pixel average.
+function vectorSurface(model,kind='vector'){
+ const {m,amp,hw,depth,xs,end}=model,start=m.r_start_mm,pitch=m.pitch_mm,lead=m.lead_in_turns||0,spr=60/m.rpm_cut;
+ function depthAt(X,Y){const rr=Math.sqrt(X*X+Y*Y);let phi=Math.atan2(Y,X);if(phi<0)phi+=TAU;
+  const k=rint((start-rr)/pitch-phi/TAU),turns=k+phi/TAU;if(!(turns>=0&&turns<=end))return 0;
+  const delta=rr-(start-pitch*turns+xs((turns-lead)*spr)*amp);return depth*Math.max(0,1-Math.abs(delta)/hw);}
+ // A row of the tip's frame at one instant f, u mm upstream, at radial offsets ws[o..o+n): adds weight*depth
+ // into out[p..]. Same equation; the angle of each point is the instant's own plus atan(u/r) (|u/r| < .2:
+ // the odd series to z^9 is exact to ~1e-11 rad), so there is no atan2 per sample.
+ const N=xs.n,X=xs.x,fs=model.fs,last=N-1;
+ function addRow(f,u,ws,o,n,out,p,weight){const tt0=f.turns;
+  for(let j=0;j<n;j++){const r=f.rs+ws[o+j],z=u/r,z2=z*z,rr=u?r*Math.sqrt(1+z2):r,tt=tt0+(u?z*(1-z2*(1/3-z2*(1/5-z2*(1/7-z2/9))))/TAU:0);
+   const k=rint((start-rr)/pitch-tt),turns=k+tt;if(!(turns>=0&&turns<=end))continue;
+   const idx=(turns-lead)*spr*fs;let v=0;if(idx>=0&&idx<=last){const i=Math.floor(idx);v=i===last?X[last]:X[i]+(X[i+1]-X[i])*(idx-i);}
+   const a=1-Math.abs(rr-(start-pitch*turns+v*amp))/hw;if(a>0)out[p+j]+=weight*depth*a;}}
+ return {kind,depthAt,addRow,lateral:t=>amp*xs(t),pixelMm:0};
+}
+// PNG pixels: the 16-bit map itself. Depth is the nearest pixel's own value (each pixel is the Cutter's
+// 2x2 sub-sample average); the stylus sits where the PNG decoder reads it: the depth-weighted centroid
+// of 65 bilinear samples across the groove at the nominal radius (vinyl-core decodeTrace, before its
+// whole-record DC removal and filtering).
+function pngSurface(model,map){
+ const {m}=model,n=map.size,st=map.samples,R=m.disc_radius_mm,k=(n-1)/(2*R),hi=n-1,inv=(m.height_polarity??'standard')==='inverted';
+ const hs=m.height_scale_mm,thick=m.thickness_mm,span=model.amp+model.hw,px=2*R/(n-1);
+ const val=i=>inv?65535-st[i]:st[i],mm=v=>thick-v/65535*hs;
+ function depthAt(X,Y){const c=Math.round((X+R)*k),r=Math.round((Y+R)*k);if(c<0||r<0||c>hi||r>hi)return 0;return mm(val(r*n+c));}
+ function bil(py,pxl){const y0=Math.floor(py),x0=Math.floor(pxl),fy=py-y0,fx=pxl-x0,ya=Math.min(hi,Math.max(0,y0)),yb=Math.min(hi,Math.max(0,y0+1)),xa=Math.min(hi,Math.max(0,x0)),xb=Math.min(hi,Math.max(0,x0+1));
+  return (1-fy)*((1-fx)*val(ya*n+xa)+fx*val(ya*n+xb))+fy*((1-fx)*val(yb*n+xa)+fx*val(yb*n+xb));}
+ function lateral(t){const th=TAU*model.turnsAt(t),r0=model.radius(t),c=Math.cos(th),s=Math.sin(th);let num=0,den=0;
+  for(let j=0;j<65;j++){const off=-span+2*span*j/64,r=r0+off,d=Math.max(0,mm(bil((R+r*s)*k,(r*c+R)*k)));num+=d*off;den+=d;}
+  return num/Math.max(den,1e-9);}
+ function addRow(f,u,ws,o,count,out,p,weight){const bx=-u*f.s,by=u*f.c;
+  for(let j=0;j<count;j++){const r=f.rs+ws[o+j],c=Math.round((r*f.c+bx+R)*k),q=Math.round((r*f.s+by+R)*k);if(c<0||q<0||c>hi||q>hi)continue;out[p+j]+=weight*mm(val(q*n+c));}}
+ return {kind:'png',depthAt,addRow,lateral,pixelMm:px};
+}
+/* One exposure in the stylus frame: for each instant from t0 to t1 (the program time since the last frame),
+   place the frame on the stylus as it was then (radial w, upstream u along the tangent) and read the real
+   surface; average. Zero span = the exact instant. Same instants either way, so scratching back shows the
+   same picture as playing forward. */
+function instants(model,surf,t0,t1,max){
+ const a=Math.min(t0,t1),b=Math.max(t0,t1),n=Math.max(1,Math.min(max,Math.floor((b-a)*model.fs)+1)),out=[];
+ for(let i=0;i<n;i++){const t=n===1?(a+b)/2:a+(b-a)*i/(n-1),th=TAU*model.turnsAt(t);out.push({t,turns:model.turnsAt(t),c:Math.cos(th),s:Math.sin(th),rs:model.radius(t)+surf.lateral(t)});}
+ return out;
+}
+// Rest a round tip of radius rho on a sampled section (w ascending, y = -depth): the lowest centre height
+// that clears every sample, and the sample(s) it touches on each side.
+function rest(sec,rho){let best=-Infinity,L=null,Rt=null,yl=-Infinity,yr=-Infinity;
+ for(const [w,y] of sec){if(Math.abs(w)>=rho)continue;const h=y+Math.sqrt(rho*rho-w*w);if(w<=0){if(h>yl){yl=h;L=[w,y];}}else if(h>yr){yr=h;Rt=[w,y];}if(h>best)best=h;}
+ const tol=rho*.04,contacts=[];if(L&&yl>=best-tol)contacts.push(L);if(Rt&&yr>=best-tol)contacts.push(Rt);
+ return {yc:best,contacts};}
 // Screen layout for a W x H panel (CSS px): true scale both ways, fitted to this record's groove.
 function layout(model,W,H){
  const {pitch,hw,depth}=model,Wv=pitch*.75+hw;
@@ -77,50 +127,65 @@ function layout(model,W,H){
 function project(L,w,u,y){const g=1/(1+u/L.Dp);return [L.cx+L.S*g*(w+u*L.ox),L.sy0-L.S*g*(y+u*L.oy)];}
 
 /* ---------- drawing: cream and brass line engraving on a dark panel ---------- */
-const INK='#eadfc6',BRASS='#c4a15a',DIM='rgba(234,223,198,.2)',BG='#16100b',CUT='#21180f';
+const INK='#eadfc6',BRASS='#c4a15a',DIM='rgba(234,223,198,.2)',BG='#16100b';
+// the field's tones, dark cut to lit wall, packed for a little-endian RGBA image (every browser this runs on)
+const TONE32=new Uint32Array(256);for(let i=0;i<256;i++){const f=i/255,mix=(a,b)=>Math.round(a+(b-a)*f);TONE32[i]=(255<<24|mix(7,70)<<16|mix(10,98)<<8|mix(14,118))>>>0;}
+const BG32=(255<<24|0x0b<<16|0x10<<8|0x16)>>>0; // = BG
+const images=new WeakMap();
+function imageFor(c,w,h){if(!c.createImageData)return null;let e=images.get(c);
+ if(!e||e.w!==w||e.h!==h){const data=c.createImageData(w,h);if(!data?.data)return null;e={w,h,data,px:new Uint32Array(data.data.buffer)};images.set(c,e);}return e;}
+// One column of image pixels at a time, from the tip outwards: each row of the field paints only what rises
+// above everything nearer (a ridge hides the groove behind it), shaded between its row and the one before.
+function rasterField(px,Wi,Hi,grid,shade,us,NR,NC,dx,L){
+ for(let X=0;X<Wi;X++){const fj=(X+.5+8)/dx,j0=Math.max(0,Math.min(NC-2,Math.floor(fj))),f=fj-j0,g0=1-f;
+  let ymin=Hi,py0=0,pv0=0;
+  for(let i=0;i<=NR;i++){const q=i*NC+j0,sg=L.S/(1+us[i]/L.Dp),y=L.sy0-sg*(us[i]*L.oy-(grid[q]*g0+grid[q+1]*f))-.5,v=(shade[q]*g0+shade[q+1]*f)*255;
+   if(i===0){const top=Math.max(0,Math.ceil(y)),c=TONE32[v|0];for(let yy=top;yy<ymin;yy++)px[yy*Wi+X]=c;ymin=top;}
+   else if(y<ymin){const top=Math.max(0,Math.ceil(y)),inv=py0-y>1e-6?1/(py0-y):0,dv=pv0-v;
+    for(let yy=top;yy<ymin;yy++){const k=(yy-y)*inv;px[yy*Wi+X]=TONE32[(v+dv*(k<1?k:1))|0];}ymin=top;}
+   py0=y;pv0=v;}
+  for(let yy=0;yy<ymin;yy++)px[yy*Wi+X]=BG32;}
+}
 function path(c,pts){c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));}
-function draw(c,model,L,s){
- const {W,H,S}=L,t=s.t,hw=model.hw,D=model.depth,N=80;
+/* The groove as it is: one exposure of the real surface around the stylus (field), the record cut away
+   through the tip (section, same samples), and the stylus resting on that section.
+   s: {t, prev (program time at the last frame), down, scratch (a canvas for the field image), rows?, colPx?, instants?} */
+function draw(c,model,surf,L,s){
+ const {W,H,S}=L,t=s.t,hw=model.hw,D=model.depth;
+ const ins=instants(model,surf,s.prev??t,t,s.instants||8);
  c.fillStyle=BG;c.fillRect(0,0,W,H);
- // land: lines across the record at even steps back, so the perspective reads
- c.lineWidth=.6;c.strokeStyle='rgba(234,223,198,.1)';
- for(let i=1;i<12;i++){const [,y]=project(L,0,L.L*i/12,0);c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
- // One frame of reference: the stylus. The tip and its V stay put on screen and the record moves under
- // it, by the true samples. Each groove is drawn as one exposure of the time since the last frame: the
- // range it swept (soft) round its average position (the edges), so a fast pass reads as a steady blur
- // rather than a new random snapshot every frame; held or slow, the range shrinks to the exact groove.
- const t0=s.prev??t,us=[];for(let i=0;i<=N;i++)us.push(L.L*(i/N)**1.2);
- const secOff=[];
- for(let k=4;k>=-2;k--){
-  { // off the panel whatever it does? then skip it before any sampling
-   const m=model.amp*2+hw,a=project(L,-k*model.pitch-m,0,0)[0],bend=L.L*L.L/(2*model.radius(t)),b=project(L,-k*model.pitch+m-bend,L.L,0)[0],b2=project(L,-k*model.pitch-m-bend,L.L,0)[0],a2=project(L,-k*model.pitch+m,0,0)[0];if(Math.max(a,b,a2,b2)<-4||Math.min(a,b,a2,b2)>W+4){if(k>=-2&&k<=2)secOff[k+2]=null;continue;}}
-  const run=[];for(const u of us){const e=model.exposure(k,u,t0,t);if(e)run.push([u,e]);}
-  if(k>=-2&&k<=2){const e0=model.exposure(k,0,t0,t);secOff[k+2]=e0?e0.mean:null;}
-  if(run.length<2)continue;
-  const P=(f,y)=>run.map(([u,e])=>project(L,f(e),u,y));
-  const left=P(e=>e.mean-hw,0),right=P(e=>e.mean+hw,0),floor=P(e=>e.mean,-D),oL=P(e=>e.lo-hw,0),oR=P(e=>e.hi+hw,0);
-  if(Math.max(...oR.map(p=>p[0]))<-4||Math.min(...oL.map(p=>p[0]))>W+4)continue;
-  path(c,oL.concat(oR.slice().reverse()));c.closePath();c.fillStyle=CUT;c.fill();c.fillStyle=k?'rgba(234,223,198,.035)':'rgba(234,223,198,.07)';c.fill(); // the range swept, a faint haze
-  c.save();path(c,left.concat(right.slice().reverse()));c.closePath();c.fillStyle=CUT;c.fill();c.clip();
-  c.strokeStyle=k?'rgba(234,223,198,.12)':'rgba(234,223,198,.26)';c.lineWidth=.6;
-  for(let i=0;i<floor.length;i+=2){c.beginPath();c.moveTo(floor[i][0],floor[i][1]);c.lineTo(right[i][0],right[i][1]);c.stroke();}
-  c.strokeStyle='rgba(196,161,90,.55)';c.lineWidth=.8;path(c,floor);c.stroke();c.restore();
-  c.strokeStyle=INK;c.globalAlpha=k?.35:.85;c.lineWidth=k?.8:1;path(c,left);c.stroke();path(c,right);c.stroke();c.globalAlpha=1;
- }
- // the record cut away through the stylus: V section, hatched (this turn's V is the tip's own, so it never moves)
- const prof=[];
- if(s.png){const px=model.pixelMm,ph=((model.radius(t)+model.stylus(t))/px)%1;for(let j=Math.floor(-L.cx/S/px)-1;j<=Math.ceil((W-L.cx)/S/px)+1;j++){const w=(j-ph)*px;prof.push([w,model.profile(w,t,secOff)]);}}
- else{const step=1/S;for(let w=-L.cx/S-step;w<=(W-L.cx)/S+step;w+=step)prof.push([w,model.profile(w,t,secOff)]);
-  for(const cc of secOff)if(cc!=null)prof.push([cc,-D],[cc-hw,0],[cc+hw,0]);prof.sort((a,b)=>a[0]-b[0]);}
- const top=prof.map(([w,y])=>project(L,w,0,y));
+ // field: rows from the far end in, columns spread evenly across the screen in each row
+ const NR=s.rows||28,dx=s.colPx||4,NC=Math.ceil((W+16)/dx)+1,grid=new Float32Array((NR+1)*NC),ws=new Float32Array((NR+1)*NC),us=new Float32Array(NR+1);
+ // Held or slow, few instants: each row is instead averaged over its own footprint along the groove (a box
+ // filter, what a screen pixel there can show), so detail finer than the rows does not alias into false steps.
+ const sub=Math.max(1,Math.floor(8/ins.length)),rowU=i=>L.L*(i/NR)**1.25;
+ for(let i=0;i<=NR;i++){const u=rowU(i),g=1/(1+u/L.Dp),du=(rowU(Math.min(NR,i+1))-rowU(Math.max(0,i-1)))/2;us[i]=u;
+  for(let j=0;j<NC;j++)ws[i*NC+j]=(-8+j*dx-L.cx)/(L.S*g)-u*L.ox;
+  const wt=1/(sub*ins.length);for(let k=0;k<sub;k++){const uk=sub===1?u:Math.max(0,u+du*((k+.5)/sub-.5));for(const f of ins)surf.addRow(f,uk,ws,i*NC,NC,grid,i*NC,wt);}}
+ // Shade at every vertex: lit from the left by the wall's slope (a full V's slope = one step), darker with depth.
+ const lift=D/hw,shade=new Float32Array(grid.length);
+ for(let i=0;i<=NR;i++)for(let j=0;j<NC;j++){const q=i*NC+j,l=j?q-1:q,r=j<NC-1?q+1:q,slope=(grid[l]-grid[r])/Math.max(1e-9,ws[r]-ws[l]);
+  shade[q]=Math.max(0,Math.min(1,.62+.3*Math.max(-1,Math.min(1,slope/lift))-.3*grid[q]/D));}
+ // Height-field raster (rasterField) at CSS-pixel resolution into a scratch canvas, then scaled onto the panel:
+ // smooth, seamless, one upload however busy the groove is. The section and the tip stay crisp vector on top.
+ const sc=s.scratch,Hi=Math.min(H,Math.ceil(L.sy0+D*S)+2);
+ if(sc&&sc.getContext){if(sc.width!==W||sc.height!==Hi){sc.width=W;sc.height=Hi;}const sx=sc.getContext('2d'),img=imageFor(sx,W,Hi);
+  if(img){rasterField(img.px,W,Hi,grid,shade,us,NR,NC,dx,L);sx.putImageData(img.data,0,0);c.imageSmoothingEnabled=true;c.drawImage(sc,0,0,W,Hi);}}
+ // the record cut away through the stylus: the same exposure, one sample per screen pixel, hatched below
+ const rho=model.tip.rho,sec=[];
+ const sw=[];for(let x=-2;x<=W+2;x++){const w=(x-L.cx)/S;if(Math.abs(w)>=rho)sw.push(w);}
+ for(let i=-48;i<=48;i++)sw.push(rho*i/48*.9999); // finer under the tip, where it rests
+ sw.sort((a,b)=>a-b);const swa=Float64Array.from(sw),sd=new Float64Array(sw.length);for(const f of ins)surf.addRow(f,0,swa,0,sw.length,sd,0,1/ins.length);
+ for(let j=0;j<sw.length;j++)sec.push([sw[j],-sd[j]]);
+ const top=sec.map(([w,y])=>project(L,w,0,y));
  c.save();path(c,top.concat([[W+2,L.base],[-2,L.base]]));c.closePath();c.fillStyle='#120d09';c.fill();c.clip();
  c.strokeStyle=DIM;c.lineWidth=.7;for(let x=-H;x<W+H;x+=5){c.beginPath();c.moveTo(x,L.base);c.lineTo(x+H,L.base-H);c.stroke();}
  c.restore();
  c.strokeStyle=INK;c.lineWidth=1.2;path(c,top);c.stroke();
  c.strokeStyle='rgba(196,161,90,.6)';c.lineWidth=.8;c.beginPath();c.moveTo(0,L.base+.5);c.lineTo(W,L.base+.5);c.stroke();
- const tip=model.tip,wS=0;
- // stylus: a solid, lit diamond cone on its round tip, brass shank, light cantilever; the strongest contrast in the panel
- const yc=s.down?tip.centreY:tip.rho+Math.max(.12,.35*D),rho=tip.rho,half=24*Math.PI/180;
+ // stylus: a solid, lit diamond cone on its round tip, brass shank, light cantilever; resting on the section drawn
+ const res=rest(sec,rho),half=24*Math.PI/180,wS=0;
+ const yc=s.down&&isFinite(res.yc)?res.yc:rho+Math.max(.12,.35*D);
  const [tx,ty]=project(L,wS,0,yc),r=Math.max(2.2,rho*S),ys=yc+rho*Math.sin(half),yTop=yc+Math.max(1.25*D,1.2*hw);
  const wt=rho*Math.cos(half)+Math.tan(half)*(yTop-ys);
  const [lx0,ly0]=project(L,wS-rho*Math.cos(half),0,ys),[rx0]=project(L,wS+rho*Math.cos(half),0,ys);
@@ -136,23 +201,34 @@ function draw(c,model,L,s){
  c.fillStyle=BRASS;c.fillRect(sx0,sy1,sx1-sx0,shH);c.save();c.beginPath();c.rect(sx0,sy1,sx1-sx0,shH);c.clip();
  c.strokeStyle='rgba(60,40,15,.5)';c.lineWidth=.7;for(let x=sx0-shH;x<sx1;x+=2.6){c.beginPath();c.moveTo(x,ly1);c.lineTo(x+shH,sy1);c.stroke();}c.restore();
  c.strokeStyle='#0d0906';c.lineWidth=1;c.strokeRect(sx0,sy1,sx1-sx0,shH);
- // the tip itself and where it touches: solid, ringed dark, with a soft glow while it plays
- if(s.down){const [gx,gy]=project(L,0,0,tip.contactY),gl=c.createRadialGradient(gx,gy,0,gx,gy,12);gl.addColorStop(0,'rgba(255,236,190,.5)');gl.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=gl;c.fillRect(gx-12,gy-12,24,24);}
+ // the tip and the points where it actually touches the walls: solid, ringed dark, a soft glow while it plays
+ const contacts=s.down?res.contacts:[];
+ if(contacts.length){const lo=contacts.reduce((p,q)=>q[1]<p[1]?q:p),[gx,gy]=project(L,lo[0],0,lo[1]),gl=c.createRadialGradient(gx,gy,0,gx,gy,12);gl.addColorStop(0,'rgba(255,236,190,.5)');gl.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=gl;c.fillRect(gx-12,gy-12,24,24);}
  c.beginPath();c.arc(tx,ty,r,0,TAU);c.fillStyle='#fff6e0';c.fill();c.strokeStyle='#0d0906';c.lineWidth=1;c.stroke();
- if(s.down)for(const sgn of[-1,1]){const [gx,gy]=project(L,sgn*tip.contactDelta,0,tip.contactY);c.beginPath();c.arc(gx,gy,2,0,TAU);c.fillStyle='#e4d09a';c.fill();c.strokeStyle='#0d0906';c.lineWidth=.8;c.stroke();}
- // on the base line, like a gauge: how far the record moved sideways under the tip since the last frame
- if(s.down&&s.swept){const ws=model.stylus(t),[a]=project(L,ws-s.swept[1],0,0),[b]=project(L,ws-s.swept[0],0,0);if(b-a>1.5){c.fillStyle='rgba(228,208,154,.9)';c.fillRect(a,L.base-1.5,b-a,2.5);}}
- // scale and source, engraved small
+ for(const [w,y] of contacts){const [gx,gy]=project(L,w,0,y);c.beginPath();c.arc(gx,gy,2,0,TAU);c.fillStyle='#e4d09a';c.fill();c.strokeStyle='#0d0906';c.lineWidth=.8;c.stroke();}
+ // on the base line, like a gauge: how far the record moved sideways under the tip during this exposure
+ if(s.down&&ins.length>1){let lo=Infinity,hi=-Infinity;const now=surf.lateral(t);for(const f of ins){const v=f.rs-model.radius(f.t)-now;if(v<lo)lo=v;if(v>hi)hi=v;}
+  const [a]=project(L,-hi,0,0),[b]=project(L,-lo,0,0);if(b-a>1.5){c.fillStyle='rgba(228,208,154,.9)';c.fillRect(a,L.base-1.5,b-a,2.5);}}
+ // scale and what is shown, engraved small
  c.font='500 8.5px Jost, Futura, sans-serif';c.textBaseline='alphabetic';
  const bl=L.bar*S,by=H-5;c.fillStyle=INK;c.fillRect(8,by-3,bl,1.2);c.fillRect(8,by-5,1,4);c.fillRect(8+bl-1,by-5,1,4);
  const lab=t=>t.toUpperCase().split('').join('\u200a');
  c.fillText(lab(`${L.bar} mm`),12+bl,by);
- const tag=W<200?(s.png?'PNG pixels':'Vector'):(s.png?`PNG pixels · ${model.pixelMm.toFixed(3)} mm`:'Vector groove');c.textAlign='right';c.fillStyle='rgba(234,223,198,.7)';c.fillText(lab(tag),W-8,by);
+ let tag=labelFor(surf,W<200);const room=W-8-(12+bl+(c.measureText?.(lab(`${L.bar} mm`))?.width||0))-10;if((c.measureText?.(lab(tag))?.width||0)>room)tag=labelFor(surf,true);c.textAlign='right';c.fillStyle='rgba(234,223,198,.7)';c.fillText(lab(tag),W-8,by);
  if(!s.down){c.textAlign='left';c.fillText(lab('Lifted'),8,14);}
  c.textAlign='left';
+ return {section:sec,rest:res,yc,instants:ins.length};
+}
+function labelFor(surf,short){
+ switch(surf.kind){
+  case 'png':return short?'PNG pixels':`PNG pixels · ${surf.pixelMm.toFixed(3)} mm`;
+  case 'vector':return 'Vector master';
+  case 'png-trace':return short?'PNG trace':'PNG trace · no 16-bit map';
+  default:return short?'Vector · rebuilt':'Vector · rebuilt from playback';
+ }
 }
 
-const core={shelfCoefficients,displacement,makeModel,layout,project,draw};
+const core={shelfCoefficients,displacement,makeModel,vectorSurface,pngSurface,instants,rest,rasterField,layout,project,draw,labelFor};
 if(typeof module!=='undefined'&&module.exports)module.exports=core;
 if(typeof document==='undefined'||typeof window==='undefined'||!document.getElementById)return;
 
@@ -172,20 +248,46 @@ function V(){return window.vinyl;}
 function shown(){const v=V();return on&&!!v?.record&&!!v.buffer&&!v.inspecting&&!document.hidden;}
 function sync(){btn.setAttribute('aria-pressed',String(on));const vis=shown();if(panel.hidden===vis)panel.hidden=!vis;if(!vis){cancel();hideCard();}return vis;}
 function cancel(){if(raf)cancelAnimationFrame(raf);clearTimeout(timer);raf=0;timer=0;}
+const SCRIPT=document.currentScript?.src||'static/needle-pip.js',workerUrl=()=>new URL('needle-pip-worker.js',new URL(SCRIPT,location.href)).href;
+// The current record's own geometry, read once it is wanted (panel shown, that source playing) and
+// dropped with the record: {state:'loading'|'ok'|'none', x (vector) | map (png)}.
+let truth={rec:null,vector:null,png:null},scratch=null;
+async function bytesOf(rec,file,name){
+ if(rec[file])return await rec[file].arrayBuffer();
+ if(!rec.base||rec.base==='demo/')return null; // imported without the file, or the bundled demo (audio and preview only): nothing to fetch
+ const r=await fetch(rec.base+name);return r.ok?await r.arrayBuffer():null;
+}
+function want(kind,rec){
+ if(truth.rec!==rec)truth={rec,vector:null,png:null};
+ if(truth[kind])return truth[kind];
+ const slot=truth[kind]={state:'loading'},done=v=>{if(truth[kind]!==slot)return;Object.assign(slot,v||{state:'none'});model=null;last=null;wake();};
+ (async()=>{
+  const bytes=await bytesOf(rec,kind==='vector'?'grooveFile':'heightmapFile',kind==='vector'?'heightmap.groove.wav':'heightmap.png');
+  if(!bytes)return null;
+  return await new Promise(res=>{const w=new Worker(workerUrl());w.onmessage=e=>{w.terminate();const d=e.data;
+    res(!d.ok?null:kind==='vector'?{state:'ok',x:d.x}:{state:'ok',map:{samples:d.samples,size:d.size}});};
+   w.onerror=()=>{w.terminate();res(null);};w.postMessage({kind,bytes,metadata:rec.metadata},[bytes]);});
+ })().then(done,()=>done(null));
+ return slot;
+}
 function modelNow(v){
- const b=v.buffer,m=v.record.metadata;if(modelFor===b&&model)return model;
+ const b=v.buffer,rec=v.record,m=rec.metadata,png=v.source==='png',slot=want(png?'png':'vector',rec);
+ const key=b.length+'|'+png+'|'+slot.state;if(modelFor===rec&&model&&model.key===key)return model;
  let x=cache.get(b);if(!x){x=displacement(b.getChannelData(0),b.sampleRate,m);cache.set(b,x);}
- model=makeModel(m,x);modelFor=b;lastT=null;return model;
+ let mdl,surf;
+ if(!png){mdl=makeModel(m,slot.state==='ok'?slot.x:x);surf=vectorSurface(mdl,slot.state==='ok'?'vector':'vector-rebuilt');}
+ else{mdl=makeModel(m,x);surf=slot.state==='ok'?pngSurface(mdl,slot.map):vectorSurface(mdl,'png-trace');}
+ model={mdl,surf,key,loading:slot.state==='loading'};modelFor=rec;lastT=null;return model;
 }
 function fit(){const w=canvas.clientWidth,h=canvas.clientHeight,d=Math.min(2,window.devicePixelRatio||1);
  if(w!==size[0]||h!==size[1]||canvas.width!==Math.round(w*d)){size=[w,h];canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);last=null;}return d;}
 function render(){
- const v=V(),mdl=modelNow(v),d=fit(),[w,h]=size;if(!w||!h)return;
- const t=v.time(),down=!!v.down,grab=!!v.state?.grabbed,png=v.source==='png',key=[t,down,grab,png,w,h,d].join('|');
+ const v=V(),M=modelNow(v),{mdl,surf}=M,d=fit(),[w,h]=size;if(!w||!h)return;
+ const t=v.time(),down=!!v.down,grab=!!v.state?.grabbed,key=[t,down,grab,M.key,w,h,d].join('|');
  if(key===last)return;last=key;
- const lastPrev=lastT,swept=lastT!==null&&Math.abs(t-lastT)<.25?mdl.swept(lastT,t):null;lastT=t;
- c2d.setTransform(d,0,0,d,0,0);draw(c2d,mdl,layout(mdl,w,h),{t,prev:swept?t+Math.max(-.06,Math.min(.06,lastPrev-t)):t,down,png,swept});
- const words=`Needle view, true scale: ${down?(grab?'stylus held in the groove':'stylus in the groove, playing'):'stylus lifted'}; ${png?'PNG pixel trace':'vector groove'}.`;
+ const lastPrev=lastT,run=lastT!==null&&Math.abs(t-lastT)<.25;lastT=t;
+ c2d.setTransform(d,0,0,d,0,0);draw(c2d,mdl,surf,layout(mdl,w,h),{t,prev:run?t+Math.max(-.06,Math.min(.06,lastPrev-t)):t,down,scratch:scratch||=document.createElement('canvas')});
+ const words=`Needle view, true scale: ${down?(grab?'stylus held in the groove':'stylus in the groove, playing'):'stylus lifted'}; ${labelFor(surf,false)}${M.loading?', loading the record\'s own geometry':''}.`;
  if(words!==label){label=words;canvas.setAttribute('aria-label',words);}
 }
 function tick(){raf=0;timer=0;if(!sync())return;render();const v=V();
