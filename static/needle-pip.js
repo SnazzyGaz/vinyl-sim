@@ -157,14 +157,20 @@ function drawStylus(c,L,tx,ty,r,h){
  const ey=ty-r*sn,top=ty-Math.max(h,3*r),wt=r*cs+tn*(ey-top); // the cone's sides touch the tip circle at (±r cos, -r sin)
  // collar: a short brass sleeve holding the diamond
  const cH=Math.max(5,Math.min(9,r*1.6)),cw0=wt*1.18,cw1=wt*.95,cy1=top-cH;
- // cantilever: a tube tapering toward the stylus, running up and back off the panel
- const ax=tx,ay=cy1+1,dx=-1.25,dy=-1,len=Math.hypot(dx,dy),ux=dx/len,uy=dy/len,nx=-uy,ny=ux;
- const reach=(ay+8)/-uy,bx=ax+ux*reach,by=ay+uy*reach,w0=Math.max(1.4,cw1*.3),w1=w0*1.75;
- c.beginPath();c.moveTo(ax+nx*w0,ay+ny*w0);c.lineTo(bx+nx*w1,by+ny*w1);c.lineTo(bx-nx*w1,by-ny*w1);c.lineTo(ax-nx*w0,ay-ny*w0);c.closePath();
- const mx=(ax+bx)/2,my=(ay+by)/2,wm=(w0+w1)/2;
- c.fillStyle=grad(c,mx+nx*wm,my+ny*wm,mx-nx*wm,my-ny*wm,[[0,'#4c453a'],[.32,'#efe7d2'],[.5,'#d9cfb6'],[.82,'#8a806b'],[1,'#3d372e']]);c.fill();
- c.strokeStyle=EDGE;c.lineWidth=1;c.stroke();
- c.strokeStyle='rgba(255,250,235,.55)';c.lineWidth=.6;c.beginPath();c.moveTo(ax+nx*w0*.35,ay+ny*w0*.35);c.lineTo(bx+nx*w1*.35,by+ny*w1*.35);c.stroke(); // the tube's long highlight
+ // The panel looks along the groove, so the cantilever runs straight into the screen: it is drawn end-on, as
+ // the round section of its tube in a brass ring, with the diamond's shank plunging vertically from it to the
+ // collar. Nothing leans: the whole stylus stands on the vertical through the tip.
+ const tr=Math.max(4,Math.min(11,cw0*1.25)),tR=tr*1.32,sh=Math.max(4,Math.min(10,r*1.2)),sw=Math.max(1.2,cw1*.42);
+ const ccy=cy1-sh-tR; // the tube's centre (lifted, it rises off the top of the panel)
+ // shank: a short square-cut stem, lit from the left like the collar
+ c.beginPath();c.rect(tx-sw,ccy,2*sw,cy1-ccy+.5);
+ c.fillStyle=grad(c,tx-sw,0,tx+sw,0,[[0,'#6f6552'],[.35,'#efe7d2'],[1,'#5a5243']]);c.fill();c.strokeStyle=EDGE;c.lineWidth=1;c.stroke();
+ // brass ring round the tube end, then the tube wall, then its dark bore (a hollow aluminium tube)
+ const ell=(rx,ry)=>{c.beginPath();c.ellipse(tx,ccy,rx,ry,0,0,TAU);};
+ ell(tR,tR*.92);c.fillStyle=grad(c,tx-tR,ccy-tR,tx+tR,ccy+tR,[[0,'#e9cf8a'],[.45,'#c4a15a'],[1,'#4f3a14']]);c.fill();c.strokeStyle=EDGE;c.lineWidth=1;c.stroke();
+ ell(tr,tr*.92);c.fillStyle=grad(c,tx-tr,ccy-tr,tx+tr,ccy+tr,[[0,'#f4eedd'],[.4,'#cfc5ab'],[1,'#5a5243']]);c.fill();c.strokeStyle=EDGE;c.lineWidth=.8;c.stroke();
+ ell(tr*.52,tr*.48);c.fillStyle='#0b0805';c.fill();
+ c.strokeStyle='rgba(255,250,235,.65)';c.lineWidth=.7;c.beginPath();c.ellipse(tx,ccy,tr*.78,tr*.72,0,Math.PI*1.05,Math.PI*1.55);c.stroke(); // the rim's highlight
  c.beginPath();c.moveTo(tx-cw1,cy1);c.lineTo(tx+cw1,cy1);c.lineTo(tx+cw0,top);c.lineTo(tx-cw0,top);c.closePath();
  c.fillStyle=grad(c,tx-cw0,0,tx+cw0,0,[[0,'#5e4518'],[.3,'#e9cf8a'],[.55,'#c4a15a'],[1,'#4f3a14']]);c.fill();c.strokeStyle=EDGE;c.lineWidth=1;c.stroke();
  c.strokeStyle='rgba(255,236,190,.7)';c.lineWidth=.7;c.beginPath();c.moveTo(tx-cw1+1,cy1+1.2);c.lineTo(tx+cw1-1,cy1+1.2);c.stroke();
@@ -220,7 +226,7 @@ function draw(c,model,surf,L,s){
  c.strokeStyle=INK;c.lineWidth=1.2;path(c,top);c.stroke();
  c.strokeStyle='rgba(196,161,90,.6)';c.lineWidth=.8;c.beginPath();c.moveTo(0,L.base+.5);c.lineTo(W,L.base+.5);c.stroke();
  // stylus, resting on the section drawn: a faceted diamond cone on its round tip (the tip radius is
- // illustrative), set in a brass collar on a tapered tube cantilever
+ // illustrative), set in a brass collar on a shank from the cantilever, seen end-on
  const res=rest(sec,rho);
  const yc=s.down&&isFinite(res.yc)?res.yc:rho+Math.max(.12,.35*D);
  const [tx,ty]=project(L,0,0,yc),r=Math.max(2.2,rho*S);
