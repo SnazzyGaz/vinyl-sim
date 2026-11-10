@@ -199,13 +199,15 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
            travel the wave carries (the rest of the look is the jelly ringing)
     hz     the jelly's ringing frequency (lower = softer)   damp  its damping ratio (lower = rings longer)
     speed  how fast ripples travel from the leg seam (dog units/s; 3.2..12)
-    decay  how far they get before dying out (dog units)    bulge  how much each ripple swells the surface */
- const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0,jelly:1,seam:.8,hz:5,damp:.12,speed:5.5,decay:1.5,bulge:.35};
+    decay  how far they get before dying out (dog units)    bulge  how much each ripple swells the surface
+    resist how firmly the bum pushes back against the seam spring's swing (extra damping, 0..1):
+           0 is the earlier floaty feel, higher settles quicker with less overshoot */
+ const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0,jelly:1,seam:.65,hz:6,damp:.38,speed:5.5,decay:1.5,bulge:.35,resist:.5};
  const MODES=['react','fig8','alt','beat'];
  const P=Object.assign({},DEFAULTS);
  function setParams(o={}){for(const [k,v] of Object.entries(o)){if(!(k in DEFAULTS)||v==null||v==='')continue;P[k]=k==='mode'?String(v):Math.max(0,Number(v)||0);}
   if(!MODES.includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);
-  const lim=(k,a,b)=>{P[k]=Math.min(b,Math.max(a,P[k]));};lim('jelly',0,3);lim('seam',0,1);lim('hz',1,12);lim('damp',.02,1);lim('speed',3.2,12);lim('decay',.2,3);lim('bulge',0,1.5);
+  const lim=(k,a,b)=>{P[k]=Math.min(b,Math.max(a,P[k]));};lim('jelly',0,3);lim('seam',0,1);lim('hz',1,12);lim('damp',.02,1);lim('speed',3.2,12);lim('decay',.2,3);lim('resist',0,1);lim('bulge',0,1.5);
   S.uJel.value.set(P.speed,P.decay,P.bulge,S.uJel.value.w);return P;}
  // ?shibaAmp=1.6&shibaLR=0&shibaUD=1.6&shibaMode=beat ... (key case doesn't matter)
  function paramsFromQuery(q){const o={};if(!q)return o;for(const [key,v] of q){const m=/^shiba(.+)$/i.exec(key);if(!m)continue;const k=Object.keys(DEFAULTS).find(d=>d.toLowerCase()===m[1].toLowerCase());if(k)o[k]=v;}return o;}
@@ -265,7 +267,7 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
    .14*g*X.act*ud*Math.max(-1,Math.min(1,2.5*(X.sub.med-X.sub.slow)/X.sub.peak+1.5*(X.bass.med-X.bass.slow)/X.bass.peak)),
    .26*g*lr*sus*Math.tanh(3*pdev+1.5*X.bal));
   // the spring follows the music: hit-heavy = stiff and snappy, held notes = soft and slow, quiet = damped
-  const tr=Math.min(1,X.rate/3),zeta=(.2+.75*(1-X.act))*(1-.5*chaos);
+  const tr=Math.min(1,X.rate/3),zeta=(.2+.75*(1-X.act))*(1-.5*chaos)+.2*P.resist;
   const Kx=110+130*tr,Ky=150+220*tr,Kz=60+180*tr;
   spring(dt,tmpT,Kx,Ky,Kz,2*zeta*Math.sqrt(Kx),2*zeta*Math.sqrt(Ky),2*zeta*Math.sqrt(Kz));
   S.drive=X.act;S.amp=Math.max(S.amp*Math.exp(-dt*2),w.length());
@@ -296,7 +298,7 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
   S.phase+=dt*Math.PI/Math.max(.22,S.period);
   const f=P.mode==='fig8'?S.drive*P.amp*P.fig:0;
   tmpT.set(0,.13*f*P.ud*Math.sin(2*S.phase),.2*f*P.lr*Math.sin(S.phase));
-  const damp=1-.55*chaos;
+  const damp=(1-.55*chaos)*(1+.6*P.resist);
   spring(dt,tmpT,260,330,200,7*damp,7*damp,6*damp);
   S.amp=Math.max(S.amp*Math.exp(-dt*2),w.length());
   if(!playing&&S.drive<1e-3&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
@@ -312,8 +314,8 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
  const tmpJ=new THREE.Vector3();
  function jellyStep(dt){
   const j=S.jel,jv=S.jelV,src=S.src,H=S.uHist.value,v=S.vel,w=S.uWob.value,g=P.jelly;
-  tmpJ.subVectors(v,S.lastV);S.lastV.copy(v);jv.addScaledVector(tmpJ,-.3*g);   // the seam jolts, the soft mass lags
-  const om=2*Math.PI*P.hz,K=om*om,C=2*P.damp*om,n=Math.max(1,Math.ceil(dt/.004)),h=dt/n,jmax=.12*Math.max(g,.01);
+  tmpJ.subVectors(v,S.lastV);S.lastV.copy(v);jv.addScaledVector(tmpJ,-.24*g);   // the seam jolts, the soft mass lags
+  const om=2*Math.PI*P.hz,K=om*om,C=2*P.damp*om,n=Math.max(1,Math.ceil(dt/.004)),h=dt/n,jmax=.1*Math.max(g,.01);
   for(let i=0;i<n;i++){jv.x+=(-K*j.x-C*jv.x)*h;jv.y+=(-K*j.y-C*jv.y)*h;jv.z+=(-K*j.z-C*jv.z)*h;j.addScaledVector(jv,h);}
   if(j.length()>jmax){j.setLength(jmax);}
   S.acc+=dt;

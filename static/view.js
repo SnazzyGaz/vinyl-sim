@@ -466,7 +466,7 @@ function updateHula(energy){
    so the butt shows; a spring at the leg seam reacts to the record under the needle (hits,
    bass line, loudness) and the soft bum ripples out from there (see shiba.js). Tuning:
    ?shibaAmp=&shibaLR=&shibaUD=&shibaMode=react|fig8|alt|beat&shibaFig=&shibaClamp=&shibaChaos=
-   and for the jelly ?shibaJelly=&shibaSeam=&shibaHz=&shibaDamp=&shibaSpeed=&shibaDecay=&shibaBulge= */
+   and for the jelly ?shibaJelly=&shibaSeam=&shibaHz=&shibaDamp=&shibaSpeed=&shibaDecay=&shibaBulge=&shibaResist= */
 const pageQuery=(()=>{try{return new URLSearchParams(location.search);}catch{return null;}})();
 const shiba=typeof createShiba==='function'?createShiba(THREE,{url:String(import.meta.url).replace(/[^/]*$/,'shiba.bin'),shells:10,query:pageQuery}):null;
 function buildShibaSpot(R,top,W,D){
