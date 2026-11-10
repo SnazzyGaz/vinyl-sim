@@ -4,6 +4,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {buildParlor} from './room.js';
 import {createLook,disposeTree} from './materials.js';
 import {createPost} from './post.js';
+import {createShiba} from './shiba.js';
 /* Player 3D view: a photographed parlour phonograph.
    Physically based materials painted procedurally (materials.js), image-based
    lighting baked from the room, one shadowed window key, and tiered post
@@ -446,6 +447,29 @@ function updateHula(energy){
  hula.dancer.position.set(tip.x,tip.y,hula.baseTop+tip.z);hula.dancer.rotation.set(-hula.ay,hula.ax,0);
  hula.hips.rotation.y=hula.ax*.5;hula.torso.rotation.y=-hula.ax*1.3;
  for(const a of hula.arms)a.rotation.x=(still?0:Math.sin(hula.phase+a.userData.sx)*drive*.35);
+}
+/* ---------- "Shiba in Clogs" (Garyck Arntzen): second cabinet toy ----------
+   Back-left of the lid, clear of the record's lift-off and swap paths (they leave
+   to the front and right), the arm and crank (right) and under the horn bell. He sits
+   side-on to the seat so the butt shows; its spring is poked by the record's bass. */
+const shiba=typeof createShiba==='function'?createShiba(THREE,{url:String(import.meta.url).replace(/[^/]*$/,'shiba.bin'),shells:10}):null;
+function buildShibaSpot(R,top,W,D){
+ const g=new THREE.Group();g.name='shiba-toy';g.position.set(-W*.74,D*.72,top);
+ if(!shiba)return g;
+ // dog-local (-.43,·,.9) is the original page's 3/4 camera; after standing him up it is world (-.43,-.9)
+ const seat=defaultPose(R).pos,to=Math.atan2(seat.y-g.position.y,seat.x-g.position.x),yaw=to-Math.atan2(-.9,-.43);
+ return shiba.mount(g,{scale:R/90*11,yaw,base:look.felt(0x2d4a30)});
+}
+function bassLevel(v,t){
+ if(!v.down||v.state.grabbed)return 0;const b=v.buffer||v.grooveBuffer;if(!b)return 0;
+ const ch=b.getChannelData(0),sr=b.sampleRate,c=Math.floor(t*sr),n=Math.floor(sr*.035),a=1-Math.exp(-2*Math.PI*250/sr); // kick + bass line
+ let y1=0,y2=0,s=0,k=0;
+ for(let i=Math.max(0,c-3*n),e=Math.min(ch.length,c+n);i<e;i++){y1+=a*(ch[i]-y1);y2+=a*(y1-y2);if(i>=c-n){s+=y2*y2;k++;}}
+ return k?Math.sqrt(s/k):0;
+}
+function updateShiba(bass){
+ if(!shiba||!shiba.loaded)return false;
+ return shiba.update(Math.min(.05,Math.max(.001,frameDt||1/60)),bass,reduce());
 }
 function engrave(text,w,h,color='#d9bd7a',lit=false){
  if(typeof document.createElement!=='function')return null;
@@ -902,6 +926,7 @@ function buildPhonograph(R){
  phonograph.add(buildHula(R,top,W,D));
  if(ROOM)phonograph.add(buildBench(R,W,D));
  phonograph.traverse(o=>{if(o.isMesh){o.castShadow=!o.material?.transparent;o.receiveShadow=true;}});
+ phonograph.add(buildShibaSpot(R,top,W,D)); // after the traverse: the fur shells set their own shadow flags
  const shadow=contactDecal(2*W+R*.95,2*D+R*.95,.8);if(shadow){shadow.position.z=tableZ+.4;phonograph.add(shadow);}
  key.target.position.set(0,0,tableZ*.5);dropRing.scale.setScalar(R*1.05);dropRing.position.z=.4;invalidate();
 }
@@ -1034,6 +1059,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
    sleeveDrag={jacket:j,id:j.userData.sleeveId,empty:!!j.userData.empty,pose:{p:j.position.clone(),q:j.quaternion.clone()},armed:false,x0:e.clientX,y0:e.clientY,moved:false,c:null,rack:false,post:false};
    setCursor('grabbing');return;}
  }
+ if(shiba?.pickMesh&&!sleevePop&&ray.intersectObject(shiba.pickMesh,false).length){const s=Math.random()<.5?-1:1;shiba.poke(.4,1.6,1.2*s);invalidate();return;} // a pat on the dog
  // Clicked empty space: tuck any half-out record back into its sleeve.
  if(sleevePop){clearSleevePop();setCursor('');}
  if(!v.record||dropIn)return;const p=hit(e);if(!p||Math.hypot(p.x,p.y)>R+1)return;if(!v.down){beginInspection();return;}drag=true;renderer.domElement.setPointerCapture?.(e.pointerId);v.grabStart(p.x,p.y);
@@ -1144,7 +1170,7 @@ let lastFrame=performance.now(),lastSig=NaN,firstDrawn=false,shadowSig=NaN,shado
    circle). The arm's audio wobble is quantised away; updates are capped at 30 Hz. */
 function shadowSignature(){
  let s=Math.round(armRig.rotation.z*600)*1.7+Math.round(armTilt.rotation.y*600)*2.3+(tonearm.visible?5:0)+builds*101+
-  Math.round((hula.ax+hula.ay*1.3+hula.bz*1.7)*400)*.7+disc.position.x*.31+disc.position.y*.37+disc.position.z*.41+disc.quaternion.x*53+disc.quaternion.y*59+outgoing.children.length*7;
+  Math.round((hula.ax+hula.ay*1.3+hula.bz*1.7)*400)*.7+(shiba?Math.round((shiba.wob.x+shiba.wob.y*1.3+shiba.wob.z*1.7)*400)*.9+(shiba.loaded?3:0):0)+disc.position.x*.31+disc.position.y*.37+disc.position.z*.41+disc.quaternion.x*53+disc.quaternion.y*59+outgoing.children.length*7;
  for(const j of sleeves.children)s+=j.position.x*.011+j.position.y*.013+j.position.z*.017+sleeves.children.length;
  for(const g of outgoing.children)s+=g.position.x*.019+g.position.z*.023;
  return s;
@@ -1159,10 +1185,10 @@ const focusPoint=new THREE.Vector3(); // the near half of the record
 function signature(){
  const c=camera.position,t=controls.target,q=disc.quaternion,p=disc.position;
  return c.x*1.31+c.y*1.73+c.z*2.11+t.x*.37+t.y*.53+t.z*.71+disc.rotation.z*997+p.x*3.1+p.y*3.7+p.z*4.3+q.x*41+q.y*43+
-  armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(tonearm.visible?1:0)+outgoing.children.length*13;
+  armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(shiba?shiba.wob.x*313+shiba.wob.y*317+shiba.wob.z*331+(shiba.loaded?17:0):0)+(tonearm.visible?1:0)+outgoing.children.length*13;
 }
 function tickScene(dt, nowMs){
- const v=window.vinyl,r=v&&v.record;let energy=0;
+ const v=window.vinyl,r=v&&v.record;let energy=0,bass=0;
  frameDt=dt;
  if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active&&!dropIn)disc.rotation.z=v.state.rotation;
   let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
@@ -1170,13 +1196,16 @@ function tickScene(dt, nowMs){
   const moving=inspect.active||dropIn||outgoing.children.length;
   const tipZ=armHold?m.thickness_mm-.25+armHold.value*13.25:m.thickness_mm+(moving?24:v.down?-.25:13);
   placeTonearm(rad*Math.cos(v.state.angle),rad*Math.sin(v.state.angle),tipZ,v.down);
-  energy=loudness(v,t);
+  energy=loudness(v,t);bass=bassLevel(v,t);
  }else tonearm.visible=false;
  updateHula(energy);
+ const shibaMoving=updateShiba(bass);
  const why=[];
+ if(shibaMoving)why.push('shiba');
  if(updateSleeves(dt))why.push('sleeves');if(updateLathe(dt))why.push('lathe');if(updateInspection(dt))why.push('inspect');if(updateSwap(dt))why.push('swap');
  if(updateCamTween(dt)){zoom.goal=null;zoom.vel=0;why.push('flight');}else{const z=applyZoom(dt);if(controls.update()||z)why.push('controls');}
  if(keepInRoom())why.push('room');
+ if(shiba?.detail(camera,renderer.domElement.clientHeight||view.clientHeight))why.push('shiba-detail');
  updateAudioListener();
  const sig=signature();if(!(Math.abs(sig-lastSig)<1e-7)){if(!why.length)why.push('moved:'+(sig-lastSig).toExponential(1));lastSig=sig;}
  let busy=why.length>0;window.vinylView.lastDraw=why.join(',')||(dirty>0?'dirty':'');
@@ -1186,7 +1215,8 @@ function drawFrame(nowMs){
  updateShadows(nowMs);
  post.focus?.(inspect.active?camera.position.distanceTo(disc.position):camera.position.distanceTo(focusPoint.set(R*.15,0,4)));
  post.render(nowMs);if(dirty>0)dirty--;
- if(!firstDrawn){firstDrawn=true;performance.mark?.('vv:first');renderer.domElement.setAttribute?.('data-ready','');}
+ if(!firstDrawn){firstDrawn=true;performance.mark?.('vv:first');renderer.domElement.setAttribute?.('data-ready','');
+  shiba?.load().then(ok=>{if(ok){renderer.shadowMap.needsUpdate=true;shadowPending=true;performance.mark?.('vv:shiba');}invalidate(3);});}
 }
 function frame(){
  requestAnimationFrame(frame);
@@ -1197,7 +1227,7 @@ function frame(){
 Object.assign(window.vinylView,{
  get camera(){return camera}, get controls(){return controls}, get disc(){return disc},
  get inspect(){return inspect}, get dropIn(){return dropIn}, get outgoing(){return outgoing},
- get sleevesGroup(){return sleeves}, get THREE(){return THREE},
+ get sleevesGroup(){return sleeves}, get THREE(){return THREE}, get shiba(){return shiba},
  setPendingSwap(from,tilt=0){pendingSwapFrom=from?from.clone():null;pendingSwapTilt=tilt;pendingExtract=null;},
  beginInspection, returnRecord, finishInspection, flyTo, snapToDefault, defaultPose, presentPose,
  keepBelowCeiling, keepInRoom, armSwapFromSleeve, captureExtract, keepDiscAwayFromCamera, roomBounds,

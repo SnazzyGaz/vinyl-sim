@@ -13,7 +13,7 @@ try {
   const controlFile=path.join(tmp,'OrbitControls.mjs');await fs.writeFile(controlFile,(await fs.readFile(new URL('addons/controls/OrbitControls.js',vendor),'utf8')).replace("from 'three'",`from '${pathToFileURL(threeFile).href}'`));
   const real=await import(pathToFileURL(threeFile));const {OrbitControls}=await import(pathToFileURL(controlFile));
   const asModule=async f=>import('data:text/javascript;base64,'+Buffer.from(await fs.readFile(new URL(f,import.meta.url),'utf8')).toString('base64'));
-  const {buildParlor}=await asModule('./static/room.js');const {createLook,disposeTree}=await asModule('./static/materials.js');
+  const {buildParlor}=await asModule('./static/room.js');const {createLook,disposeTree}=await asModule('./static/materials.js');const {createShiba}=await asModule('./static/shiba.js');
   let draws=0;const createPost=(renderer,scene,camera)=>({render(){draws++;renderer.render(scene,camera);},resize(w,h){renderer.setSize(w,h,false);},setMode(){},state(){return {mode:'auto',tier:'low',dpr:1};},idle(){}});
   class RoomEnvironment{}
   class Element {
@@ -30,7 +30,7 @@ try {
   const THREE={...real,WebGLRenderer:class{constructor(){this.domElement=new Element();this.shadowMap={};}setPixelRatio(){}setSize(){}render(scene,camera){scene.updateMatrixWorld();camera.updateMatrixWorld();}},TextureLoader:class{load(url,onLoad,onProgress,onError){onError?.(new Error('no texture in test'));}}};
   let spatial;let lifts=0,drops=0;const placements=[],swaps=[],vols=[],speeds=[],srcs=[];const vinyl={inspecting:false,setInspecting(value){this.inspecting=value;if(value)this.lift();},setListener(position,forward,up,mouth,refDistance){spatial={position:position.clone(),forward:forward.clone(),up:up.clone(),mouth:mouth.clone(),refDistance};},record:null,down:true,buffer:null,volume:.7,rpm:45,source:'vector',sources:{vector:true,png:true,both:true},swapTo(id){swaps.push(id);return true;},setVolume(v){vols.push(v);this.volume=v;},setSpeed(v){speeds.push(v);this.rpm=v;},setSource(m){srcs.push(m);this.source=m;},drop(){drops++;this.down=true;return Promise.resolve();},state:{rotation:0,dragging:false,angle:0},time(){return 0;},lift(){lifts++;this.down=false;},place(x,y,release){placements.push({x,y,release});},grabStart(x,y){placements.push({x,y,release:false});},grabMove(x,y){placements.push({x,y,release:false});},grabEnd(){placements.push({...placements.at(-1),release:true});},grabTick(){}};
   const win=new Element();win.vinyl=vinyl;
-  const context={THREE,OrbitControls,buildParlor,createLook,disposeTree,createPost,RoomEnvironment,clearTimeout,setTimeout,document:{getElementById:id=>({view,resetView:reset,inspectRecord:inspectButton,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
+  const context={THREE,OrbitControls,buildParlor,createLook,disposeTree,createPost,createShiba,RoomEnvironment,clearTimeout,setTimeout,document:{getElementById:id=>({view,resetView:reset,inspectRecord:inspectButton,status:root}[id])},window:win,devicePixelRatio:1,performance:{now:(()=>{let t=0;return ()=>(t+=16.7);})()},requestAnimationFrame:fn=>{tick=fn;},ResizeObserver:class{constructor(cb){this.cb=cb;}observe(){this.cb();}},console};
   vm.createContext(context);
   const source=(await fs.readFile(new URL('./static/view.js',import.meta.url),'utf8')).replace(/^import .*;$/mg,'').replaceAll('import.meta.url',JSON.stringify(new URL('./static/view.js',import.meta.url).href));
   vm.runInContext(source+'\nglobalThis.api={sleeveRest,jacketCenter,floorPose,getTableZ:()=>tableZ,camera,controls,renderer,disc,scene,placeTonearm,armRig,armParts,getArm:()=>({armL,armPivotX,armPivotY}),phonograph,sleeves,hula,tonearm,getR:()=>R,inspect,beginInspection,returnRecord,labelPrint,keepInRoom,roomBounds,armSwapFromSleeve,captureExtract,getDropIn:()=>dropIn,getPendingExtract:()=>pendingExtract,getSleevePop:()=>sleevePop,clearSleevePop};',context);
@@ -39,6 +39,16 @@ try {
   assert.equal(scene.background.getHex(),0x1b1611);assert.ok(disc.getObjectByName('placeholder-disc'));
   {const {phonograph,sleeves}=context.api;assert.ok(phonograph.getObjectByName('hula-girl'),'hula girl built with the cabinet');assert.ok(phonograph.getObjectByName('hula-dancer'));assert.equal(sleeves.name,'sleeves');assert.ok(scene.getObjectByName('sleeves'));
    for(const n of ['volume-knob','speed-lever','source-switch'])assert.equal(phonograph.getObjectByName(n),undefined,n+' removed');}
+  {// the shiba toy: an empty spot on the lid until its bake arrives, then the dog (with fur shells) drops in
+   const {phonograph}=context.api,spot=phonograph.getObjectByName('shiba-toy');assert.ok(spot,'shiba spot built with the cabinet');assert.equal(spot.getObjectByName('shiba-dog'),undefined);
+   const bin=await fs.readFile(new URL('./static/shiba.bin',import.meta.url));const shiba=context.window.vinylView.shiba;
+   assert.ok(shiba.fromBuffer(bin.buffer.slice(bin.byteOffset,bin.byteOffset+bin.byteLength)),'shiba bake decodes');assert.ok(spot.getObjectByName('shiba-dog'));
+   let fur=0;spot.traverse(o=>{if(o.name==='shiba-fur')fur++;});assert.equal(fur,10,'ten fur shells');
+   scene.updateMatrixWorld(true);const box=new real.Box3().setFromObject(spot.getObjectByName('shiba-body'));const Rr=context.api.getR();
+   assert.ok(box.max.z-box.min.z>Rr*.3&&box.max.z-box.min.z<Rr*.6,`toy scale (${(box.max.z-box.min.z).toFixed(1)} mm tall)`);
+   for(const [x,y] of [[box.min.x,box.min.y],[box.max.x,box.min.y],[box.min.x,box.max.y],[box.max.x,box.max.y]])assert.ok(Math.abs(x)<Rr*1.3&&Math.abs(y)<Rr*1.3,'on the lid');
+   const near=Math.hypot(Math.max(0,Math.max(-box.max.x,box.min.x)),Math.max(0,Math.max(-box.max.y,box.min.y)));assert.ok(near>Rr*1.05,`clear of the platter (${near.toFixed(0)} mm out)`);
+   const hb=new real.Box3().setFromObject(phonograph.getObjectByName('hula-girl'));assert.ok(!hb.intersectsBox(box),'clear of the hula girl');}
   const metadata={disc_radius_mm:90,label_radius_mm:27,thickness_mm:2.5,r_start_mm:86,pitch_mm:5,lead_in_turns:.35,rpm_cut:45,amp_mm:.3};
   vinyl.record={label:'Original tune',metadata,base:'/unused/'};const seatBefore=camera.position.clone();win.emit('vinyl-record',{detail:vinyl.record});tick();
   assert.ok(camera.position.distanceTo(seatBefore)<1e-7,'mounting a record never moves the camera');for(let i=0;i<60;i++)tick();
@@ -128,7 +138,7 @@ try {
   const tapObj=(o,dx=0,dy=0)=>{const w=new real.Vector3();o.getWorldPosition(w);const [x,y]=toScreen(w);canvas.emit('pointerdown',event(x,y,0));canvas.emit('pointermove',event(x+dx,y+dy,0));canvas.emit('pointerup',event(x+dx,y+dy,0));tick();};
   // Machine-clearance probe: the closest any horn/arm/cabinet/hula vertex comes to a moving record (disc) or sleeve (box).
   const machineGap=(obj,kind)=>{scene.updateMatrixWorld(true);const inv=new real.Matrix4().copy(obj.matrixWorld).invert(),v=new real.Vector3(),Rr=context.api.getR(),S=2*Rr*1.04,T=Rr*.028;let g=Infinity,what='';
-   const test=(o)=>{if(!o.isMesh||!o.geometry?.attributes?.position||/platter|contact-shadow/.test(o.name)||o.name==='spindle'||o.name==='platter-felt')return;const pos=o.geometry.attributes.position;
+   const test=(o)=>{if(!o.isMesh||!o.geometry?.attributes?.position||/platter|contact-shadow|shiba-fur/.test(o.name)||o.name==='spindle'||o.name==='platter-felt')return;const pos=o.geometry.attributes.position;
     for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld).applyMatrix4(inv);let d;
      if(kind==='disc'){const r=Math.hypot(v.x,v.y);if(r<3.7||r>Rr+.5)continue;d=v.z<0?-v.z:v.z>metadata.thickness_mm?v.z-metadata.thickness_mm:-1;}
      else{if(Math.abs(v.x)>S/2+.5||v.z<-.5||v.z>S+.5)continue;d=Math.abs(v.y)-T/2;}
@@ -231,7 +241,7 @@ try {
    const countLights=()=>{let n=0;scene.traverseVisible(o=>{if(o.isLight)n++;});return n;},lightsBefore=countLights(),heldGeo=disc.children[0].geometry;
    // The record must never pass through the horn, its bracket, the arm or the hula girl on the way out or back.
    let obstacles=[];const gather=()=>{obstacles=[];const ph=context.api.phonograph;scene.updateMatrixWorld(true);
-    const take=o=>{if(!o.isMesh||!o.geometry?.attributes?.position||/platter|contact-shadow/.test(o.name))return;const pos=o.geometry.attributes.position,name=o.name||o.parent?.name||'part';
+    const take=o=>{if(!o.isMesh||!o.geometry?.attributes?.position||/platter|contact-shadow|shiba-fur/.test(o.name))return;const pos=o.geometry.attributes.position,name=o.name||o.parent?.name||'part';
      for(let i=0;i<pos.count;i+=1)obstacles.push({v:new real.Vector3().fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld),name});};
     ph.traverse(o=>{if(o.name!=='spindle'&&o.name!=='platter-felt')take(o);});context.api.tonearm.traverse(take);};
    const inv=new real.Matrix4(),loc=new real.Vector3();let worst=Infinity,hitName='';

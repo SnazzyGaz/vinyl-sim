@@ -46,6 +46,8 @@ Open the 16-bit PNG, and add its `.groove.wav` and `.json` when you have them. L
 
 A PNG on its own is traced from its pixels and sounds deliberately lo-fi. This is a digital stylus.
 
+Two toys ride on the cabinet lid and dance to the record: the spring-mounted hula girl sways with its loudness, and Garyck Arntzen's *Shiba in Clogs* (back-left corner) jiggles his butt on the bass, one bump per kick or bass note, and settles when the needle lifts. Click him for a wobble. His fur and meshes are baked ahead of time into `static/shiba.bin` by `node tools/bake-shiba.mjs`, so the page does no mesh building at start-up.
+
 The camera stays where you put it: swapping records, inspecting one and putting it back never reset the view (Reset view glides back to the default seat). **Picture** sets the rendering quality — Auto picks High (ambient occlusion, depth of field, bloom), Balanced or Low for your GPU and steps down if frames get slow. The scene only redraws when something moves, so an idle player uses almost no GPU.
 
 ## How a record works
