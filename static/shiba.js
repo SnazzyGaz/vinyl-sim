@@ -4,10 +4,11 @@
    shell plus a few offset shells of the same mesh, each a MeshStandardMaterial patched
    for the strand pattern, so the fur takes the room's own key light, shadows and
    reflections. The butt rides a damped spring (uWob x the baked aWob weights) that the
-   record's bass pokes on the beat: mostly side to side, with a little bounce. */
-export function createShiba(THREE,{url,shells=10}={}){
+   record's bass drives: kicks alternate an up-down bounce and a side twerk, and a
+   beat-locked figure-8 keeps it moving in between (tunable, see update()). */
+export function createShiba(THREE,{url,shells=10,query=null}={}){
  const S={data:null,loading:null,holder:null,group:null,base:null,uWob:{value:new THREE.Vector3()},vel:new THREE.Vector3(),
-  fast:0,slow:0,peak:.02,since:1,side:1,beats:0,armed:true,amp:0,pick:null,mats:null};
+  fast:0,slow:0,peak:.02,since:1,side:1,beats:0,armed:true,drive:0,phase:0,period:.5,amp:0,pick:null,mats:null};
  const srgb=x=>x<=.04045?x/12.92:Math.pow((x+.055)/1.055,2.4);
  function decode(buf){
   const dv=new DataView(buf);if(String.fromCharCode(...new Uint8Array(buf,0,4))!=='SHB1')throw new Error('not a shiba bake');
@@ -128,28 +129,54 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
  /* bass: RMS of the low-passed record signal near the needle (0 when lifted).
     A beat is a sharp rise of the bass envelope over its recent valley, scaled by a
     slowly decaying peak so quiet and loud records both jiggle. */
+ /* Wobble tuning (all live-editable via .params, and from the URL: ?shibaAmp=1.6&shibaUD=0&shibaLR=1 ...)
+    amp   overall strength            lr   side-to-side weight       ud   up-down weight
+    mode  'fig8' beat-locked figure-8 plus alternating kicks (bounce, then twerk)
+          'alt'  alternating kicks only   'beat' every beat pokes both axes at once
+    fig   figure-8 drive between beats   clamp  largest offset (dog units; was .3)
+    chaos random shoves and looser damping (0..1) */
+ const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'fig8',fig:1,clamp:.55,chaos:0};
+ const P=Object.assign({},DEFAULTS);
+ function setParams(o={}){for(const [k,v] of Object.entries(o)){if(!(k in DEFAULTS)||v==null||v==='')continue;P[k]=k==='mode'?String(v):Math.max(0,Number(v)||0);}
+  if(!['fig8','alt','beat'].includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);return P;}
+ // ?shibaAmp=1.6&shibaLR=0&shibaUD=1.6&shibaMode=beat ... (key case doesn't matter)
+ function paramsFromQuery(q){const o={};if(!q)return o;for(const [key,v] of q){const m=/^shiba(.+)$/i.exec(key);if(!m)continue;const k=Object.keys(DEFAULTS).find(d=>d.toLowerCase()===m[1].toLowerCase());if(k)o[k]=v;}return o;}
+ const tmpT=new THREE.Vector3();
  function update(dt,bass,still){
   const w=S.uWob.value,v=S.vel;
-  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=0;return false;}
+  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=S.drive=0;return false;}
   S.fast+=(bass-S.fast)*Math.min(1,dt*(bass>S.fast?40:10));
   // valley: drops with the envelope at once, climbs back slowly, so (fast - valley) is a note's attack
   S.slow=S.fast<S.slow?S.fast:S.slow+(S.fast-S.slow)*Math.min(1,dt*5);
   S.peak=Math.max(S.fast,S.peak*Math.exp(-dt/6),.004);
   const level=S.fast/S.peak,flux=(S.fast-S.slow)/S.peak;S.since+=dt;
+  const playing=bass>1e-5,chaos=P.chaos,rnd=()=>Math.random()-.5;
+  S.drive+=((playing?Math.min(1,level*1.3):0)-S.drive)*Math.min(1,dt*(playing?8:5));
   if(flux<.03)S.armed=true; // re-arm once the attack is over: one poke per note
   if(S.armed&&flux>.07&&level>.2&&S.since>.12){S.armed=false;
-   const a=Math.min(1.3,.5+flux*2);S.side=-S.side;S.beats++;S.since=0;
-   poke(.5*a*S.side,1.2*a,2.4*a*S.side); // mostly side to side, a little bounce and shove
+   if(S.since<1.2)S.period+=(Math.min(1,Math.max(.22,S.since))-S.period)*.35; // beat spacing, for the figure-8 tempo
+   const a=Math.min(1.3,.5+flux*2)*P.amp,k=S.beats++;S.since=0;
+   if(P.mode==='beat'){S.side=-S.side;poke(.35*a*S.side*P.lr,3.2*a*P.ud,4.4*a*S.side*P.lr);}
+   else if(k%2===0)poke(.25*a*rnd()*P.lr,3.8*a*P.ud,.6*a*S.side*P.lr);              // kick: up-down bounce
+   else{S.side=-S.side;poke(.45*a*S.side*P.lr,.7*a*P.ud,4.8*a*S.side*P.lr);}         // off-beat: side twerk
+   if(chaos>0)poke(3*a*chaos*rnd(),3.5*a*chaos*rnd(),5*a*chaos*rnd());
+   if(P.mode==='fig8')S.phase+=(Math.round(S.phase/Math.PI)*Math.PI-S.phase)*.5;   // lock the figure-8 to the beat
   }
-  // sustained bass keeps a small sway going between beats
-  v.z+=S.side*level*Math.min(1,S.fast*40)*6*dt;
+  // figure-8 (Lissajous 1:2): one side lobe and one bounce per beat, scaled by the bass level
+  S.phase+=dt*Math.PI/Math.max(.22,S.period);
+  const f=P.mode==='fig8'?S.drive*P.amp*P.fig:0;
+  tmpT.set(0,.13*f*P.ud*Math.sin(2*S.phase),.2*f*P.lr*Math.sin(S.phase));
+  const damp=1-.55*chaos;
   for(let i=0;i<2;i++){const h=Math.min(dt,.05)/2;
-   v.x+=(-260*w.x-7*v.x)*h;v.y+=(-330*w.y-7*v.y)*h;v.z+=(-200*w.z-6*v.z)*h;
-   w.addScaledVector(v,h);w.clampLength(0,.3);}
+   v.x+=(-260*(w.x-tmpT.x)-7*damp*v.x)*h;v.y+=(-330*(w.y-tmpT.y)-7*damp*v.y)*h;v.z+=(-200*(w.z-tmpT.z)-6*damp*v.z)*h;
+   w.addScaledVector(v,h);
+   if(w.length()>P.clamp){w.setLength(P.clamp);const n=tmpT.copy(w).normalize(),vn=v.dot(n);if(vn>0)v.addScaledVector(n,-1.6*vn);tmpT.set(0,.13*f*P.ud*Math.sin(2*S.phase),.2*f*P.lr*Math.sin(S.phase));} // soft stop, no stick
+  }
   S.amp=Math.max(S.amp*Math.exp(-dt*2),w.length());
-  if(bass<1e-5&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
+  if(!playing&&S.drive<1e-3&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
   return w.lengthSq()+v.lengthSq()>0;
  }
  function fromBuffer(buf){S.data=decode(buf);S.loading=Promise.resolve(true);return attach();}
- return {load,fromBuffer,mount,update,poke,attach,detail,get state(){return S;},get wob(){return S.uWob.value;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
+ setParams(paramsFromQuery(query));
+ return {load,fromBuffer,mount,update,poke,attach,detail,setParams,get params(){return P;},defaults:DEFAULTS,get state(){return S;},get wob(){return S.uWob.value;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
 }
