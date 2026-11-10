@@ -192,7 +192,10 @@ function paint(v,n){          // -> [colour, furLength, wobbleWeight]
     c.lerp(hc,wH); len=lerp(len,hl,wH);
   }
   c.multiplyScalar(1+n2*0.1+n1*0.06);
-  const wob=smooth(0.7,1.35,v.x)*smooth(0.85,1.15,v.y)*smooth(0.0,0.08,tLeg);
+  // butt-wobble weight: the hinge sits deep in the undercarriage, so the back of each
+  // leg (and the legs and clogs themselves) is the last part that stays put
+  const legBack=lerp(LEG_X[1],LEG_X[0],smooth(-0.15,0.15,v.z))+0.2;
+  const wob=smooth(legBack-0.04,1.3,v.x)*smooth(0.5,1.05,v.y)*smooth(2.75,2.35,v.y)*smooth(0.0,0.1,tLeg);
   return [c,len,wob];
 }
 

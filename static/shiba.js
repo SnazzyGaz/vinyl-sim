@@ -126,25 +126,110 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
   return true;
  }
  function poke(x,y,z){S.vel.x+=x;S.vel.y+=y;S.vel.z+=z;}
- /* bass: RMS of the low-passed record signal near the needle (0 when lifted).
-    A beat is a sharp rise of the bass envelope over its recent valley, scaled by a
-    slowly decaying peak so quiet and loud records both jiggle. */
- /* Wobble tuning (all live-editable via .params, and from the URL: ?shibaAmp=1.6&shibaUD=0&shibaLR=1 ...)
+ /* ---------- what the record is doing under the needle ----------
+    features(buffer,t) reads the decoded record signal itself in a ±35 ms window around
+    the playhead (filters warmed up over the 105 ms before) and returns band levels:
+    sub (<120 Hz, kicks), bass (120-320 Hz, the bass line), mid (320 Hz-2.2 kHz),
+    high (>2.2 kHz, snare crack, claps, hats), low (sub+bass), plus a bass pitch estimate
+    (zero crossings of the low band, Hz) and the left/right balance of the lows (stereo only). */
+ function features(b,t){
+  if(!b||!(t>=0))return null;
+  const sr=b.sampleRate,L=b.getChannelData(0),st=b.numberOfChannels>1,R=st?b.getChannelData(1):L;
+  const c=Math.floor(t*sr),n=Math.floor(sr*.035),i0=Math.max(0,c-3*n),i1=Math.min(L.length,c+n),iw=Math.max(i0,c-n);
+  if(i1<=iw)return null;
+  const k=f=>1-Math.exp(-2*Math.PI*f/sr),a1=k(120),a2=k(320),a3=k(2200);
+  let p1=0,q1=0,p2=0,q2=0,p3=0,q3=0,pl=0,ql=0,pr=0,qr=0,eS=0,eB=0,eM=0,eH=0,eL=0,eR=0,m=0,zc=0,prev=0;
+  for(let i=i0;i<i1;i++){
+   const l=L[i],r=R[i],x=st?(l+r)*.5:l;
+   p1+=a1*(x-p1);q1+=a1*(p1-q1);p2+=a2*(x-p2);q2+=a2*(p2-q2);p3+=a3*(x-p3);q3+=a3*(p3-q3);
+   if(st){pl+=a2*(l-pl);ql+=a2*(pl-ql);pr+=a2*(r-pr);qr+=a2*(pr-qr);}
+   if(i>=iw){const bb=q2-q1,mm=q3-q2,hh=x-q3;eS+=q1*q1;eB+=bb*bb;eM+=mm*mm;eH+=hh*hh;if(st){eL+=ql*ql;eR+=qr*qr;}
+    if(m&&(q2>0)!==(prev>0))zc++;prev=q2;m++;}
+  }
+  const rm=v=>Math.sqrt(v/m),gl=Math.sqrt(eL),gr=Math.sqrt(eR);
+  return {sub:rm(eS),bass:rm(eB),mid:rm(eM),high:rm(eH),low:rm(eS+eB),bal:st?(gr-gl)/(gr+gl+1e-9):0,pitch:zc*sr/(2*m)};
+ }
+ /* Wobble tuning (live-editable via .params, and from the URL: ?shibaAmp=1.6&shibaUD=0&shibaLR=1 ...)
     amp   overall strength            lr   side-to-side weight       ud   up-down weight
-    mode  'fig8' beat-locked figure-8 plus alternating kicks (bounce, then twerk)
-          'alt'  alternating kicks only   'beat' every beat pokes both axes at once
-    fig   figure-8 drive between beats   clamp  largest offset (dog units; was .3)
-    chaos random shoves and looser damping (0..1) */
- const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'fig8',fig:1,clamp:.55,chaos:0};
+    mode  'react' (default) the music shapes the motion, see updateReact
+          'fig8'  the earlier beat-locked figure-8 plus alternating kicks
+          'alt'   alternating kicks only   'beat' every beat pokes both axes at once
+    fig   sway strength: the slow lean that follows sustained bass ('react'), or the
+          figure-8 drive between beats ('fig8')
+    clamp largest offset (dog units)  chaos random shoves and looser damping (0..1) */
+ const DEFAULTS={amp:1.35,lr:1,ud:.85,mode:'react',fig:1,clamp:.55,chaos:0};
+ const MODES=['react','fig8','alt','beat'];
  const P=Object.assign({},DEFAULTS);
  function setParams(o={}){for(const [k,v] of Object.entries(o)){if(!(k in DEFAULTS)||v==null||v==='')continue;P[k]=k==='mode'?String(v):Math.max(0,Number(v)||0);}
-  if(!['fig8','alt','beat'].includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);return P;}
+  if(!MODES.includes(P.mode))P.mode=DEFAULTS.mode;P.clamp=Math.min(1,Math.max(.05,P.clamp));P.chaos=Math.min(1,P.chaos);return P;}
  // ?shibaAmp=1.6&shibaLR=0&shibaUD=1.6&shibaMode=beat ... (key case doesn't matter)
  function paramsFromQuery(q){const o={};if(!q)return o;for(const [key,v] of q){const m=/^shiba(.+)$/i.exec(key);if(!m)continue;const k=Object.keys(DEFAULTS).find(d=>d.toLowerCase()===m[1].toLowerCase());if(k)o[k]=v;}return o;}
  const tmpT=new THREE.Vector3();
- function update(dt,bass,still){
+ const env=(o,x,dt,up,down)=>o+(x-o)*Math.min(1,dt*(x>o?up:down));
+ const BANDS=['sub','bass','mid','high'];
+ const band=()=>({fast:0,med:0,slow:0,valley:0,peak:.004,flux:0,lvl:0,armed:true,since:1});
+ function resetReact(){S.rx={sub:band(),bass:band(),mid:band(),high:band(),tot:0,totPeak:.006,act:0,rate:0,bal:0,pf:0,pmean:0,pprev:0,side:1,since0:0};}
+ resetReact();
+ // integrate the butt spring toward target T with per-axis stiffness K and damping C, soft stop at the clamp
+ function spring(dt,T,Kx,Ky,Kz,Cx,Cy,Cz){
   const w=S.uWob.value,v=S.vel;
-  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=S.drive=0;return false;}
+  for(let i=0;i<2;i++){const h=Math.min(dt,.05)/2;
+   v.x+=(-Kx*(w.x-T.x)-Cx*v.x)*h;v.y+=(-Ky*(w.y-T.y)-Cy*v.y)*h;v.z+=(-Kz*(w.z-T.z)-Cz*v.z)*h;
+   w.addScaledVector(v,h);
+   if(w.length()>P.clamp){w.setLength(P.clamp);const nx=w.x/P.clamp,ny=w.y/P.clamp,nz=w.z/P.clamp,vn=v.x*nx+v.y*ny+v.z*nz;if(vn>0){v.x-=1.6*vn*nx;v.y-=1.6*vn*ny;v.z-=1.6*vn*nz;}}
+   if(w.y<-.6){w.y=-.6;if(v.y<0)v.y*=-.3;} // the butt never sinks onto the felt puck, even at a big clamp
+  }
+ }
+ /* 'react': no clock and no canned pattern; every move comes from the signal.
+    - Each band has a fast and a slow envelope; a sharp rise of the fast one over its recent
+      valley is a hit, and the hit's size sets the shove. Kicks (sub) jolt him up,
+      snare/clap/hat crack (high) whips the butt sideways, mid hits nudge it back and sideways,
+      and a new bass-line note pushes toward where the pitch moved (higher note: one side, lower: the other).
+    - Sustained bass leans the butt: sideways by how far the bass pitch sits above or below
+      its recent average (and toward the louder channel on stereo records), up or down as the
+      low end swells or fades.
+    - The spring itself follows the music: a busy, hit-heavy passage stiffens it (quick snaps),
+      long held notes soften it (slow sway), and quiet passages raise the damping so he settles. */
+ function updateReact(dt,f){
+  const w=S.uWob.value,v=S.vel,X=S.rx,amp=P.amp,lr=P.lr,ud=P.ud,chaos=P.chaos,rnd=()=>Math.random()-.5;
+  const playing=!!f&&(f.low+f.mid+f.high)>1e-5;
+  for(const k of BANDS){const b=X[k],x=playing?f[k]:0;
+   b.fast=env(b.fast,x,dt,45,12);b.med=env(b.med,x,dt,6,3);b.slow=env(b.slow,x,dt,.8,.8);
+   b.valley=b.fast<b.valley?b.fast:b.valley+(b.fast-b.valley)*Math.min(1,dt*5);
+   b.peak=Math.max(b.fast,b.peak*Math.exp(-dt/8),.004);
+   b.flux=(b.fast-b.valley)/b.peak;b.lvl=b.fast/b.peak;b.since+=dt;if(b.flux<.03)b.armed=true;
+  }
+  const tot=Math.hypot(X.sub.med,X.bass.med,X.mid.med,X.high.med);X.totPeak=Math.max(tot,X.totPeak*Math.exp(-dt/10),.006);
+  X.act=env(X.act,playing?Math.min(1,1.6*tot/X.totPeak):0,dt,4,1.6);   // relative loudness: quiet passages ~0
+  X.rate*=Math.exp(-dt/1.5);X.bal=env(X.bal,playing?f.bal:0,dt,3,3);
+  const hit=(b,thr,min)=>{if(b.armed&&b.flux>thr&&b.lvl>min&&b.since>.1){b.armed=false;b.since=0;X.rate++;S.beats++;return Math.min(1.5,.35+b.flux*2.2)*(.45+.55*Math.min(1,b.lvl));}return 0;};
+  const across=()=>Math.abs(X.bal)>.12?Math.sign(X.bal):(Math.abs(w.z)>.02?-Math.sign(w.z):(X.side=-X.side));
+  let s;
+  if((s=hit(X.sub,.09,.25)))poke(.6*s*amp,6*s*amp*ud,1.4*s*amp*lr*(Math.sign(v.z||w.z)||X.side));              // kick: jolt up
+  if((s=hit(X.high,.12,.25)))poke(.3*s*amp*rnd(),-.6*s*amp*ud,5.8*s*amp*lr*across());                            // crack: whip sideways
+  if((s=hit(X.mid,.12,.3)))poke(1.1*s*amp,.8*s*amp*ud,2.8*s*amp*lr*across());                                     // mid hit: back and across
+  // bass-line pitch: track it only while the low end is clearly sounding
+  const lowLvl=(X.sub.lvl+X.bass.lvl)*.5;
+  if(playing&&lowLvl>.25&&f.pitch>20&&f.pitch<500){X.pf=X.pf?env(X.pf,f.pitch,dt,10,10):f.pitch;X.pmean=X.pmean?env(X.pmean,X.pf,dt,.35,.35):X.pf;}
+  if((s=hit(X.bass,.1,.3))){const d=X.pf-X.pprev,dir=Math.abs(d)>X.pf*.04?Math.sign(d):across();poke(.5*s*amp,2.2*s*amp*ud,3.2*s*amp*lr*dir);X.pprev=X.pf;}
+  if(chaos>0&&X.since0!==S.beats){X.since0=S.beats;const a=amp*chaos;poke(3*a*rnd(),3.5*a*rnd(),5*a*rnd());}
+  // sustained lean
+  const sus=Math.min(1,.5*X.sub.med/X.sub.peak+.7*X.bass.med/X.bass.peak),pdev=X.pmean?Math.log2(X.pf/X.pmean):0;
+  const g=P.fig*amp*X.act;
+  tmpT.set(.06*g*(X.mid.med-X.mid.slow)/X.mid.peak,
+   .14*g*X.act*ud*Math.max(-1,Math.min(1,2.5*(X.sub.med-X.sub.slow)/X.sub.peak+1.5*(X.bass.med-X.bass.slow)/X.bass.peak)),
+   .26*g*lr*sus*Math.tanh(3*pdev+1.5*X.bal));
+  // the spring follows the music: hit-heavy = stiff and snappy, held notes = soft and slow, quiet = damped
+  const tr=Math.min(1,X.rate/3),zeta=(.2+.75*(1-X.act))*(1-.5*chaos);
+  const Kx=110+130*tr,Ky=150+220*tr,Kz=60+180*tr;
+  spring(dt,tmpT,Kx,Ky,Kz,2*zeta*Math.sqrt(Kx),2*zeta*Math.sqrt(Ky),2*zeta*Math.sqrt(Kz));
+  S.drive=X.act;S.amp=Math.max(S.amp*Math.exp(-dt*2),w.length());
+  if(!playing&&X.act<1e-3&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
+  return w.lengthSq()+v.lengthSq()>0;
+ }
+ // the earlier beat-driven modes ('fig8', 'alt', 'beat'), driven by the low-band level alone
+ function updateBeat(dt,bass){
+  const w=S.uWob.value,v=S.vel;
   S.fast+=(bass-S.fast)*Math.min(1,dt*(bass>S.fast?40:10));
   // valley: drops with the envelope at once, climbs back slowly, so (fast - valley) is a note's attack
   S.slow=S.fast<S.slow?S.fast:S.slow+(S.fast-S.slow)*Math.min(1,dt*5);
@@ -167,16 +252,20 @@ totalEmissiveRadiance+=diffuseColor.rgb*pow(1.0-max(dot(normal,normalize(vViewPo
   const f=P.mode==='fig8'?S.drive*P.amp*P.fig:0;
   tmpT.set(0,.13*f*P.ud*Math.sin(2*S.phase),.2*f*P.lr*Math.sin(S.phase));
   const damp=1-.55*chaos;
-  for(let i=0;i<2;i++){const h=Math.min(dt,.05)/2;
-   v.x+=(-260*(w.x-tmpT.x)-7*damp*v.x)*h;v.y+=(-330*(w.y-tmpT.y)-7*damp*v.y)*h;v.z+=(-200*(w.z-tmpT.z)-6*damp*v.z)*h;
-   w.addScaledVector(v,h);
-   if(w.length()>P.clamp){w.setLength(P.clamp);const n=tmpT.copy(w).normalize(),vn=v.dot(n);if(vn>0)v.addScaledVector(n,-1.6*vn);tmpT.set(0,.13*f*P.ud*Math.sin(2*S.phase),.2*f*P.lr*Math.sin(S.phase));} // soft stop, no stick
-  }
+  spring(dt,tmpT,260,330,200,7*damp,7*damp,6*damp);
   S.amp=Math.max(S.amp*Math.exp(-dt*2),w.length());
   if(!playing&&S.drive<1e-3&&w.lengthSq()+v.lengthSq()*.01<1e-9){w.set(0,0,0);v.set(0,0,0);}
   return w.lengthSq()+v.lengthSq()>0;
  }
+ /* update(dt, music, still): music is features(...) (or null when the needle is up),
+    or a bare low-band level number for the beat modes. */
+ function update(dt,music,still){
+  const w=S.uWob.value,v=S.vel;
+  if(still){w.set(0,0,0);v.set(0,0,0);S.fast=S.slow=S.drive=0;resetReact();return false;}
+  const f=typeof music==='number'?{low:music,sub:music,bass:0,mid:0,high:0,bal:0,pitch:0}:music;
+  return P.mode==='react'?updateReact(dt,f):updateBeat(dt,f?f.low:0);
+ }
  function fromBuffer(buf){S.data=decode(buf);S.loading=Promise.resolve(true);return attach();}
  setParams(paramsFromQuery(query));
- return {load,fromBuffer,mount,update,poke,attach,detail,setParams,get params(){return P;},defaults:DEFAULTS,get state(){return S;},get wob(){return S.uWob.value;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
+ return {load,fromBuffer,mount,update,features,poke,attach,detail,setParams,get params(){return P;},defaults:DEFAULTS,get state(){return S;},get wob(){return S.uWob.value;},get pickMesh(){return S.pick;},get loaded(){return !!S.data;}};
 }

@@ -448,11 +448,12 @@ function updateHula(energy){
  hula.hips.rotation.y=hula.ax*.5;hula.torso.rotation.y=-hula.ax*1.3;
  for(const a of hula.arms)a.rotation.x=(still?0:Math.sin(hula.phase+a.userData.sx)*drive*.35);
 }
-/* ---------- "Shiba in Clogs" (Garyck Arntzen): the default cabinet toy ----------
-   He takes the hula girl's front-left corner (only one toy shows at a time; the brass
-   pip on the cabinet front swaps them). He sits side-on to the seat so the butt shows;
-   its spring is driven by the record's bass. Wobble tuning: ?shibaAmp=&shibaLR=&shibaUD=
-   &shibaMode=fig8|alt|beat&shibaFig=&shibaClamp=&shibaChaos= (see shiba.js). */
+/* ---------- "Shiba in Clogs" (Garyck Arntzen): a cabinet toy ----------
+   He stands in the front-left corner (only one toy shows at a time; the hula girl is the
+   default and the brass pip on the cabinet front swaps them). He sits side-on to the seat
+   so the butt shows; its spring reacts to the record under the needle (hits, bass line,
+   loudness; see shiba.js). Tuning: ?shibaAmp=&shibaLR=&shibaUD=
+   &shibaMode=react|fig8|alt|beat&shibaFig=&shibaClamp=&shibaChaos= */
 const pageQuery=(()=>{try{return new URLSearchParams(location.search);}catch{return null;}})();
 const shiba=typeof createShiba==='function'?createShiba(THREE,{url:String(import.meta.url).replace(/[^/]*$/,'shiba.bin'),shells:10,query:pageQuery}):null;
 function buildShibaSpot(R,top,W,D){
@@ -462,16 +463,13 @@ function buildShibaSpot(R,top,W,D){
  const seat=defaultPose(R).pos,to=Math.atan2(seat.y-g.position.y,seat.x-g.position.x),yaw=to-Math.atan2(-.9,-.43);
  return shiba.mount(g,{scale:R/90*11,yaw,base:look.felt(0x2d4a30)});
 }
-function bassLevel(v,t){
- if(!v.down||v.state.grabbed)return 0;const b=v.buffer||v.grooveBuffer;if(!b)return 0;
- const ch=b.getChannelData(0),sr=b.sampleRate,c=Math.floor(t*sr),n=Math.floor(sr*.035),a=1-Math.exp(-2*Math.PI*250/sr); // kick + bass line
- let y1=0,y2=0,s=0,k=0;
- for(let i=Math.max(0,c-3*n),e=Math.min(ch.length,c+n);i<e;i++){y1+=a*(ch[i]-y1);y2+=a*(y1-y2);if(i>=c-n){s+=y2*y2;k++;}}
- return k?Math.sqrt(s/k):0;
+// what the record is doing under the needle right now (band levels, bass pitch); null when the needle is up
+function shibaMusic(v,t){
+ if(!shiba||toyChoice!=='shiba'||!v.down||v.state.grabbed)return null;const b=v.buffer||v.grooveBuffer;return b?shiba.features(b,t):null;
 }
-function updateShiba(bass){
+function updateShiba(music){
  if(!shiba||!shiba.loaded)return false;
- return shiba.update(Math.min(.05,Math.max(.001,frameDt||1/60)),bass,reduce());
+ return shiba.update(Math.min(.05,Math.max(.001,frameDt||1/60)),music,reduce());
 }
 /* ---------- secret toy switch: a small brass pip low on the cabinet front ----------
    Press it to swap the shiba and the hula girl (one shows at a time; shiba by default).
@@ -1243,7 +1241,7 @@ function signature(){
   armRig.rotation.z*503+armTilt.rotation.y*709+hula.ax*301+hula.ay*307+hula.bz*311+(shiba?shiba.wob.x*313+shiba.wob.y*317+shiba.wob.z*331+(shiba.loaded?17:0):0)+toyAnim.t*337+toyAnim.press*347+(toyChoice==='hula'?19:0)+(tonearm.visible?1:0)+outgoing.children.length*13;
 }
 function tickScene(dt, nowMs){
- const v=window.vinyl,r=v&&v.record;let energy=0,bass=0;
+ const v=window.vinyl,r=v&&v.record;let energy=0,music=null;
  frameDt=dt;
  if(r){const m=r.metadata,t=v.time(),th=2*Math.PI*(m.lead_in_turns+t*m.rpm_cut/60);if(!v.state.grabbed)v.state.rotation=v.state.angle+th;if(v.state.grabbed)v.grabTick();if(!inspect.active&&!dropIn)disc.rotation.z=v.state.rotation;
   let d=0;const displacement=v.grooveBuffer||v.buffer;if(displacement){const samples=displacement.getChannelData(0);d=samples[Math.min(samples.length-1,Math.floor(t*displacement.sampleRate))]||0;}
@@ -1251,10 +1249,10 @@ function tickScene(dt, nowMs){
   const moving=inspect.active||dropIn||outgoing.children.length;
   const tipZ=armHold?m.thickness_mm-.25+armHold.value*13.25:m.thickness_mm+(moving?24:v.down?-.25:13);
   placeTonearm(rad*Math.cos(v.state.angle),rad*Math.sin(v.state.angle),tipZ,v.down);
-  energy=loudness(v,t);bass=bassLevel(v,t);
+  energy=loudness(v,t);music=shibaMusic(v,t);
  }else tonearm.visible=false;
  updateHula(energy);
- const shibaMoving=updateShiba(bass);
+ const shibaMoving=updateShiba(music);
  const why=[];
  if(shibaMoving)why.push('shiba');
  if(updateToys(dt))why.push('toy');

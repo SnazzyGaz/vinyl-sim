@@ -50,6 +50,21 @@ try {
    const near=Math.hypot(Math.max(0,Math.max(-box.max.x,box.min.x)),Math.max(0,Math.max(-box.max.y,box.min.y)));assert.ok(near>Rr*1.05,`clear of the platter (${near.toFixed(0)} mm out)`);
    const hula=phonograph.getObjectByName('hula-girl');assert.ok(Math.hypot(spot.position.x-hula.position.x,spot.position.y-hula.position.y)<1e-6,'shiba takes the hula girl\'s corner');
    assert.equal(hula.visible,true,'hula girl shows by default');assert.equal(spot.visible,false,'one toy at a time: shiba hidden');}
+  {// the butt reacts to the music itself: held bass leans slowly, sparse hits jolt, silence stays still; the legs never move
+   const sh=context.window.vinylView.shiba,body=context.api.phonograph.getObjectByName('shiba-body').geometry,P=body.attributes.position,W=body.attributes.aWob;
+   let legW=0,underW=0;for(let i=0;i<P.count;i++){if(P.getY(i)<.72)legW=Math.max(legW,W.getX(i));else if(P.getY(i)<.95&&P.getX(i)>.75)underW=Math.max(underW,W.getX(i));}
+   assert.equal(legW,0,'legs and clogs carry no wobble');assert.ok(underW>.3,`the undercarriage behind the legs moves (${underW.toFixed(2)})`);
+   const sr=22050,N=sr*5,buf=x=>({sampleRate:sr,numberOfChannels:1,length:N,getChannelData:()=>x});
+   const steady=new Float32Array(N),hits=new Float32Array(N),quiet=new Float32Array(N);let ph=0;
+   for(let i=0;i<N;i++){const t=i/sr,f=[55,65.4,49,73.4][Math.min(3,Math.floor(t/1.25))],u=t%1.25;ph+=2*Math.PI*f/sr;steady[i]=.3*Math.min(1,u/.15)*(Math.sin(ph)+.4*Math.sin(2*ph));}
+   for(const k of [.3,1.6,2.1,3.7]){let q=0;for(let j=0;j<sr*.4;j++){const u=j/sr;q+=2*Math.PI*(48+100*Math.exp(-u/.04))/sr;hits[Math.floor(k*sr)+j]+=.8*Math.exp(-u/.16)*Math.sin(q);}}
+   const run=x=>{sh.update(1/30,null,true);let side=0,flips=0,prev=0,n=0,mx=0;for(let f=0;f<150;f++){sh.update(1/30,sh.features(buf(x),f/30),false);const w=sh.wob;mx=Math.max(mx,w.length());
+     if(f>15){side+=Math.abs(w.z);n++;if(Math.sign(w.z)!==Math.sign(prev)&&Math.abs(w.z-prev)>.004)flips++;prev=w.z;}}
+     let settle=0;for(;settle<120&&(sh.wob.length()>.005||sh.state.vel.length()>.05);settle++)sh.update(1/30,null,false);return {side:side/n,flips,mx,settle:settle/30,beats:sh.state.beats};};
+   const a=run(steady),b=run(hits),c=run(quiet);sh.update(1/30,null,true);
+   assert.ok(c.mx===0,'silence: no wobble');assert.ok(a.mx>.2&&b.mx>.2,`held bass and hits both move him (${a.mx.toFixed(2)}, ${b.mx.toFixed(2)})`);
+   assert.ok(a.side>.05,`held bass leans him side to side (${a.side.toFixed(3)})`);assert.ok(b.flips>a.flips,`hits snap him about more often than held notes (${b.flips} vs ${a.flips} side flips)`);
+   assert.ok(a.settle<3&&b.settle<3,'he settles when the needle lifts');}
   const metadata={disc_radius_mm:90,label_radius_mm:27,thickness_mm:2.5,r_start_mm:86,pitch_mm:5,lead_in_turns:.35,rpm_cut:45,amp_mm:.3};
   vinyl.record={label:'Original tune',metadata,base:'/unused/'};const seatBefore=camera.position.clone();win.emit('vinyl-record',{detail:vinyl.record});tick();
   assert.ok(camera.position.distanceTo(seatBefore)<1e-7,'mounting a record never moves the camera');for(let i=0;i<60;i++)tick();
