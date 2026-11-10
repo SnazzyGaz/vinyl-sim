@@ -23,6 +23,13 @@ for(const seconds of [11.6,200]){
   // upstream groove arrives at the stylus u/speed later
   const u=1.5,ahead=g.centre(0,u,t),later=g.stylus(t+u/g.speed(t));if(ahead!==null)assert.ok(Math.abs(ahead+u*u/(2*g.radius(t))-later)<1e-9,'the groove ahead is the sound to come');
  }
+ // one frame of reference: the tip. Its own groove at the contact never moves; the rest is measured from it
+ for(const [t0,t1] of [[1.2,1.2],[1.2,1.2+1/60],[1.2+1/60,1.2]]){const e=g.exposure(0,0,t0,t1);assert.ok(Math.abs(e.lo)<1e-12&&Math.abs(e.hi)<1e-12,'the V under the tip is fixed');}
+ for(const k of [0,1,-1])for(const u of [.3,1.1]){const snap=g.exposure(k,u,1.5,1.5),c=g.centre(k,u,1.5);if(c===null)continue;
+  assert.ok(Math.abs(snap.mean-(c-g.stylus(1.5)))<1e-12&&snap.lo===snap.hi,'no exposure: the exact groove, relative to the tip');
+  const e=g.exposure(k,u,1.5-1/60,1.5),r=g.exposure(k,u,1.5,1.5-1/60);
+  assert.ok(e.lo<=e.mean&&e.mean<=e.hi&&e.hi-e.lo>0,'one frame of travel: a range round an average');
+  assert.ok(Math.abs(e.lo-r.lo)<1e-9&&Math.abs(e.hi-r.hi)<1e-9,'played back or scratched back over the same span: the same picture');}
  // ideal contact: both contact points on the V walls, tip above the floor
  const tp=g.tip,wall=-g.depth+(g.depth/g.hw)*tp.contactDelta;
  assert.ok(Math.abs(wall-tp.contactY)<1e-12&&tp.centreY-tp.rho>-g.depth,'sphere rests on both walls');
@@ -35,7 +42,7 @@ for(const seconds of [11.6,200]){
  for(const [W,H] of [[242,150],[170,106]]){const L=P.layout(g,W,H);
   assert.ok(L.sy0+g.depth*L.S<=L.base&&L.base<H&&L.sy0>L.hzn,'section fits');
   assert.ok(L.bar*L.S>=10&&L.bar*L.S<=W*.32,'scale bar is a sensible length');
-  const ctx=recorder();P.draw(ctx,g,L,{t:1,down:true,png:false,swept:[lo,hi]});P.draw(ctx,g,L,{t:1,down:false,png:true});
+  const ctx=recorder();P.draw(ctx,g,L,{t:1,prev:1-1/60,down:true,png:false,swept:[lo,hi]});P.draw(ctx,g,L,{t:1,prev:1+1/60,down:true,png:true,swept:[lo,hi]});P.draw(ctx,g,L,{t:1,down:false,png:true});
   assert.ok(ctx.calls>200&&ctx.bad===0,'draws without NaN');}
 }
 function recorder(){const c={calls:0,bad:0};return new Proxy(c,{get(o,k){if(k in o)return o[k];return (...a)=>{o.calls++;if(a.some(v=>typeof v==='number'&&!Number.isFinite(v)))o.bad++;return {addColorStop(){}};};},set(o,k,v){o[k]=v;return true;}});}

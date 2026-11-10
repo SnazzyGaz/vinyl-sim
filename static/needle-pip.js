@@ -52,8 +52,18 @@ function makeModel(m,x){
  function stylus(t){return amp*xs(t);}
  function swept(t0,t1){const a=Math.min(t0,t1)*fs,b=Math.max(t0,t1)*fs;let lo=Math.min(xs(t0),xs(t1)),hi=Math.max(xs(t0),xs(t1));
   for(let i=Math.ceil(a);i<=Math.floor(b)&&i-a<200000;i++){const v=i>=0&&i<=last?x[i]:0;if(v<lo)lo=v;if(v>hi)hi=v;}return [lo*amp,hi*amp];}
- function profile(w,t){let best=0;for(let k=-2;k<=2;k++){const c=centre(k,0,t);if(c===null)continue;const v=1-Math.abs(w-c)/hw;if(v>best)best=v;}return -depth*best;}
- return {m,fs,amp,hw,depth,pitch,rev,end,xs,turnsAt,radius,speed,centre,tip,stylus,swept,profile,pixelMm:2*m.disc_radius_mm/((m.image_size||4096)-1)};
+ // Where turn k sits relative to the stylus tip, u mm upstream, over one exposure (program time t0..t1, the
+ // span since the last frame): lo/hi = the range it covered, mean = its average. Zero span = the instant.
+ const eb=new Float64Array(49);let ek='';
+ function exposure(k,u,t0,t1){const c1=centre(k,u,t1);if(c1===null)return null;
+  const a=Math.min(t0,t1),b=Math.max(t0,t1),tm=(a+b)/2,off=k*rev+u/speed(tm),bend=-k*pitch-u*u/(2*radius(tm));
+  const n=Math.min(48,Math.floor((b-a)*fs)); // 48 instants per exposure: enough for a steady range and average
+  if(n<1){const v=c1-stylus(t1);return {lo:v,hi:v,mean:v};}
+  if(ek!==a+'|'+b+'|'+n){ek=a+'|'+b+'|'+n;for(let i=0;i<=n;i++)eb[i]=xs(a+(b-a)*i/n);} // the tip's own path, once per frame
+  let lo=Infinity,hi=-Infinity,sum=0;for(let i=0;i<=n;i++){const v=bend+amp*(xs(a+(b-a)*i/n+off)-eb[i]);if(v<lo)lo=v;if(v>hi)hi=v;sum+=v;}
+  return {lo,hi,mean:sum/(n+1)};}
+ function profile(w,t,offs){let best=0;for(let k=-2;k<=2;k++){const c=offs?offs[k+2]:centre(k,0,t);if(c===null||c===undefined)continue;const v=1-Math.abs(w-c)/hw;if(v>best)best=v;}return -depth*best;}
+ return {m,fs,amp,hw,depth,pitch,rev,end,xs,turnsAt,radius,speed,centre,exposure,tip,stylus,swept,profile,pixelMm:2*m.disc_radius_mm/((m.image_size||4096)-1)};
 }
 // Screen layout for a W x H panel (CSS px): true scale both ways, fitted to this record's groove.
 function layout(model,W,H){
@@ -70,56 +80,68 @@ function project(L,w,u,y){const g=1/(1+u/L.Dp);return [L.cx+L.S*g*(w+u*L.ox),L.s
 const INK='#eadfc6',BRASS='#c4a15a',DIM='rgba(234,223,198,.2)',BG='#16100b',CUT='#21180f';
 function path(c,pts){c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));}
 function draw(c,model,L,s){
- const {W,H,S}=L,t=s.t,hw=model.hw,D=model.depth,N=110;
+ const {W,H,S}=L,t=s.t,hw=model.hw,D=model.depth,N=80;
  c.fillStyle=BG;c.fillRect(0,0,W,H);
  // land: lines across the record at even steps back, so the perspective reads
  c.lineWidth=.6;c.strokeStyle='rgba(234,223,198,.1)';
  for(let i=1;i<12;i++){const [,y]=project(L,0,L.L*i/12,0);c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
- // grooves running away from the stylus; the wall facing us hatched across, so its wiggle reads as relief
- const us=[];for(let i=0;i<=N;i++)us.push(L.L*(i/N)**1.2);
+ // One frame of reference: the stylus. The tip and its V stay put on screen and the record moves under
+ // it, by the true samples. Each groove is drawn as one exposure of the time since the last frame: the
+ // range it swept (soft) round its average position (the edges), so a fast pass reads as a steady blur
+ // rather than a new random snapshot every frame; held or slow, the range shrinks to the exact groove.
+ const t0=s.prev??t,us=[];for(let i=0;i<=N;i++)us.push(L.L*(i/N)**1.2);
+ const secOff=[];
  for(let k=4;k>=-2;k--){
-  const run=[];for(const u of us){const cc=model.centre(k,u,t);if(cc!==null)run.push([u,cc]);}if(run.length<2)continue;
-  const left=run.map(([u,cc])=>project(L,cc-hw,u,0)),right=run.map(([u,cc])=>project(L,cc+hw,u,0)),floor=run.map(([u,cc])=>project(L,cc,u,-D));
-  if(Math.max(...left.map(p=>p[0]))<-4||Math.min(...right.map(p=>p[0]))>W+4)continue;
+  { // off the panel whatever it does? then skip it before any sampling
+   const m=model.amp*2+hw,a=project(L,-k*model.pitch-m,0,0)[0],bend=L.L*L.L/(2*model.radius(t)),b=project(L,-k*model.pitch+m-bend,L.L,0)[0],b2=project(L,-k*model.pitch-m-bend,L.L,0)[0],a2=project(L,-k*model.pitch+m,0,0)[0];if(Math.max(a,b,a2,b2)<-4||Math.min(a,b,a2,b2)>W+4){if(k>=-2&&k<=2)secOff[k+2]=null;continue;}}
+  const run=[];for(const u of us){const e=model.exposure(k,u,t0,t);if(e)run.push([u,e]);}
+  if(k>=-2&&k<=2){const e0=model.exposure(k,0,t0,t);secOff[k+2]=e0?e0.mean:null;}
+  if(run.length<2)continue;
+  const P=(f,y)=>run.map(([u,e])=>project(L,f(e),u,y));
+  const left=P(e=>e.mean-hw,0),right=P(e=>e.mean+hw,0),floor=P(e=>e.mean,-D),oL=P(e=>e.lo-hw,0),oR=P(e=>e.hi+hw,0);
+  if(Math.max(...oR.map(p=>p[0]))<-4||Math.min(...oL.map(p=>p[0]))>W+4)continue;
+  path(c,oL.concat(oR.slice().reverse()));c.closePath();c.fillStyle=CUT;c.fill();c.fillStyle=k?'rgba(234,223,198,.035)':'rgba(234,223,198,.07)';c.fill(); // the range swept, a faint haze
   c.save();path(c,left.concat(right.slice().reverse()));c.closePath();c.fillStyle=CUT;c.fill();c.clip();
-  c.strokeStyle=k?'rgba(234,223,198,.14)':'rgba(234,223,198,.3)';c.lineWidth=.6;
+  c.strokeStyle=k?'rgba(234,223,198,.12)':'rgba(234,223,198,.26)';c.lineWidth=.6;
   for(let i=0;i<floor.length;i+=2){c.beginPath();c.moveTo(floor[i][0],floor[i][1]);c.lineTo(right[i][0],right[i][1]);c.stroke();}
-  c.strokeStyle='rgba(196,161,90,.6)';c.lineWidth=.8;path(c,floor);c.stroke();c.restore();
-  c.strokeStyle=INK;c.globalAlpha=k?.4:.95;c.lineWidth=k?.8:1.1;path(c,left);c.stroke();path(c,right);c.stroke();c.globalAlpha=1;
+  c.strokeStyle='rgba(196,161,90,.55)';c.lineWidth=.8;path(c,floor);c.stroke();c.restore();
+  c.strokeStyle=INK;c.globalAlpha=k?.35:.85;c.lineWidth=k?.8:1;path(c,left);c.stroke();path(c,right);c.stroke();c.globalAlpha=1;
  }
- // the record cut away through the stylus: V section, hatched
+ // the record cut away through the stylus: V section, hatched (this turn's V is the tip's own, so it never moves)
  const prof=[];
- if(s.png){const px=model.pixelMm,ph=(model.radius(t)/px)%1;for(let j=Math.floor(-L.cx/S/px)-1;j<=Math.ceil((W-L.cx)/S/px)+1;j++){const w=(j-ph)*px;prof.push([w,model.profile(w,t)]);}}
- else{const step=1/S;for(let w=-L.cx/S-step;w<=(W-L.cx)/S+step;w+=step)prof.push([w,model.profile(w,t)]);
-  for(let k=-2;k<=2;k++){const cc=model.centre(k,0,t);if(cc!==null)prof.push([cc,-D],[cc-hw,0],[cc+hw,0]);}prof.sort((a,b)=>a[0]-b[0]);}
+ if(s.png){const px=model.pixelMm,ph=((model.radius(t)+model.stylus(t))/px)%1;for(let j=Math.floor(-L.cx/S/px)-1;j<=Math.ceil((W-L.cx)/S/px)+1;j++){const w=(j-ph)*px;prof.push([w,model.profile(w,t,secOff)]);}}
+ else{const step=1/S;for(let w=-L.cx/S-step;w<=(W-L.cx)/S+step;w+=step)prof.push([w,model.profile(w,t,secOff)]);
+  for(const cc of secOff)if(cc!=null)prof.push([cc,-D],[cc-hw,0],[cc+hw,0]);prof.sort((a,b)=>a[0]-b[0]);}
  const top=prof.map(([w,y])=>project(L,w,0,y));
  c.save();path(c,top.concat([[W+2,L.base],[-2,L.base]]));c.closePath();c.fillStyle='#120d09';c.fill();c.clip();
  c.strokeStyle=DIM;c.lineWidth=.7;for(let x=-H;x<W+H;x+=5){c.beginPath();c.moveTo(x,L.base);c.lineTo(x+H,L.base-H);c.stroke();}
  c.restore();
  c.strokeStyle=INK;c.lineWidth=1.2;path(c,top);c.stroke();
  c.strokeStyle='rgba(196,161,90,.6)';c.lineWidth=.8;c.beginPath();c.moveTo(0,L.base+.5);c.lineTo(W,L.base+.5);c.stroke();
- const wS=model.stylus(t),tip=model.tip;
- // stylus: conical diamond on a spherical tip, in a hatched shank on the cantilever
+ const tip=model.tip,wS=0;
+ // stylus: a solid, lit diamond cone on its round tip, brass shank, light cantilever; the strongest contrast in the panel
  const yc=s.down?tip.centreY:tip.rho+Math.max(.12,.35*D),rho=tip.rho,half=24*Math.PI/180;
- const [tx,ty]=project(L,wS,0,yc),r=rho*S,ys=yc+rho*Math.sin(half),yTop=yc+Math.max(1.5*D,1.2*hw);
+ const [tx,ty]=project(L,wS,0,yc),r=Math.max(2.2,rho*S),ys=yc+rho*Math.sin(half),yTop=yc+Math.max(1.25*D,1.2*hw);
  const wt=rho*Math.cos(half)+Math.tan(half)*(yTop-ys);
  const [lx0,ly0]=project(L,wS-rho*Math.cos(half),0,ys),[rx0]=project(L,wS+rho*Math.cos(half),0,ys);
  const [lx1,ly1]=project(L,wS-wt,0,yTop),[rx1]=project(L,wS+wt,0,yTop);
- const shH=Math.max(5,Math.min(9,ly1*.3)),sx0=lx1+(rx1-lx1)*.18,sx1=rx1-(rx1-lx1)*.18,sy1=ly1-shH,cw=1.8,mx=(sx0+sx1)/2;
- // cantilever: a thin tube from the shank up and away to the cartridge, out of frame
+ const shH=Math.max(5,Math.min(9,ly1*.3)),sx0=lx1+(rx1-lx1)*.18,sx1=rx1-(rx1-lx1)*.18,sy1=ly1-shH,cw=2,mx=(sx0+sx1)/2;
  c.beginPath();c.moveTo(mx-cw,sy1+2);c.lineTo(mx-cw-sy1*.55-6,-2);c.lineTo(mx+cw-sy1*.55+2,-2);c.lineTo(mx+cw,sy1+2);c.closePath();
- c.fillStyle='#211a12';c.fill();c.strokeStyle='rgba(234,223,198,.8)';c.lineWidth=.9;c.stroke();
- c.beginPath();c.moveTo(lx1,ly1);c.lineTo(lx0,ly0);c.arc(tx,ty,r,Math.PI-half,half,true);c.lineTo(rx0,ly0);c.lineTo(rx1,ly1);c.closePath();
- c.fillStyle='#1d1610';c.fill();c.save();c.clip();
- c.strokeStyle='rgba(234,223,198,.3)';c.lineWidth=.6;for(let i=1;i<5;i++){const f=i/5;c.beginPath();c.moveTo(tx+(f-.5)*r*1.4,ty);c.lineTo(lx1+(rx1-lx1)*f,ly1);c.stroke();}
- c.restore();c.strokeStyle=INK;c.lineWidth=1.1;c.stroke();
- c.save();c.beginPath();c.rect(sx0,sy1,sx1-sx0,shH);c.fillStyle='#2a2016';c.fill();c.clip();
- c.strokeStyle='rgba(196,161,90,.65)';c.lineWidth=.7;for(let x=sx0-shH;x<sx1;x+=2.6){c.beginPath();c.moveTo(x,ly1);c.lineTo(x+shH,sy1);c.stroke();}c.restore();
- c.strokeStyle=BRASS;c.lineWidth=1;c.strokeRect(sx0,sy1,sx1-sx0,shH);
- if(s.down){const [gx,gy]=project(L,wS,0,tip.contactY),gl=c.createRadialGradient(gx,gy,0,gx,gy,10);gl.addColorStop(0,'rgba(255,236,190,.45)');gl.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=gl;c.fillRect(gx-10,gy-10,20,20);
-  c.fillStyle='#fff3d6';for(const sgn of[-1,1]){const [gx,gy]=project(L,wS+sgn*tip.contactDelta,0,tip.contactY);c.beginPath();c.arc(gx,gy,1.6,0,TAU);c.fill();}}
- // on the base line, like a gauge: how far sideways the tip went since the last frame (one 60 fps frame can span several mm of groove)
- if(s.down&&s.swept){const [a]=project(L,s.swept[0],0,0),[b]=project(L,s.swept[1],0,0);if(b-a>1.5){c.fillStyle='rgba(228,208,154,.9)';c.fillRect(a,L.base-1.5,b-a,2.5);}}
+ c.fillStyle='#bfb397';c.fill();c.strokeStyle='#0d0906';c.lineWidth=1;c.stroke();
+ c.beginPath();c.moveTo(lx1,ly1);c.lineTo(lx0,ly0);c.arc(tx,ty,rho*S,Math.PI-half,half,true);c.lineTo(rx0,ly0);c.lineTo(rx1,ly1);c.closePath();
+ const lit=c.createLinearGradient(lx1,0,rx1,0);lit.addColorStop(0,'#8c7d60');lit.addColorStop(.45,'#f3e9cf');lit.addColorStop(1,'#b3a27f');
+ c.fillStyle=lit;c.fill();c.save();c.clip();
+ c.strokeStyle='rgba(40,28,16,.28)';c.lineWidth=.6;for(let i=1;i<5;i++){const f=i/5;c.beginPath();c.moveTo(tx+(f-.5)*r*1.2,ty);c.lineTo(lx1+(rx1-lx1)*f,ly1);c.stroke();}
+ c.restore();c.strokeStyle='#0d0906';c.lineWidth=1.2;c.stroke();
+ c.fillStyle=BRASS;c.fillRect(sx0,sy1,sx1-sx0,shH);c.save();c.beginPath();c.rect(sx0,sy1,sx1-sx0,shH);c.clip();
+ c.strokeStyle='rgba(60,40,15,.5)';c.lineWidth=.7;for(let x=sx0-shH;x<sx1;x+=2.6){c.beginPath();c.moveTo(x,ly1);c.lineTo(x+shH,sy1);c.stroke();}c.restore();
+ c.strokeStyle='#0d0906';c.lineWidth=1;c.strokeRect(sx0,sy1,sx1-sx0,shH);
+ // the tip itself and where it touches: solid, ringed dark, with a soft glow while it plays
+ if(s.down){const [gx,gy]=project(L,0,0,tip.contactY),gl=c.createRadialGradient(gx,gy,0,gx,gy,12);gl.addColorStop(0,'rgba(255,236,190,.5)');gl.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=gl;c.fillRect(gx-12,gy-12,24,24);}
+ c.beginPath();c.arc(tx,ty,r,0,TAU);c.fillStyle='#fff6e0';c.fill();c.strokeStyle='#0d0906';c.lineWidth=1;c.stroke();
+ if(s.down)for(const sgn of[-1,1]){const [gx,gy]=project(L,sgn*tip.contactDelta,0,tip.contactY);c.beginPath();c.arc(gx,gy,2,0,TAU);c.fillStyle='#e4d09a';c.fill();c.strokeStyle='#0d0906';c.lineWidth=.8;c.stroke();}
+ // on the base line, like a gauge: how far the record moved sideways under the tip since the last frame
+ if(s.down&&s.swept){const ws=model.stylus(t),[a]=project(L,ws-s.swept[1],0,0),[b]=project(L,ws-s.swept[0],0,0);if(b-a>1.5){c.fillStyle='rgba(228,208,154,.9)';c.fillRect(a,L.base-1.5,b-a,2.5);}}
  // scale and source, engraved small
  c.font='500 8.5px Jost, Futura, sans-serif';c.textBaseline='alphabetic';
  const bl=L.bar*S,by=H-5;c.fillStyle=INK;c.fillRect(8,by-3,bl,1.2);c.fillRect(8,by-5,1,4);c.fillRect(8+bl-1,by-5,1,4);
@@ -161,8 +183,8 @@ function render(){
  const v=V(),mdl=modelNow(v),d=fit(),[w,h]=size;if(!w||!h)return;
  const t=v.time(),down=!!v.down,grab=!!v.state?.grabbed,png=v.source==='png',key=[t,down,grab,png,w,h,d].join('|');
  if(key===last)return;last=key;
- const swept=lastT!==null&&Math.abs(t-lastT)<.25?mdl.swept(lastT,t):null;lastT=t;
- c2d.setTransform(d,0,0,d,0,0);draw(c2d,mdl,layout(mdl,w,h),{t,down,png,swept});
+ const lastPrev=lastT,swept=lastT!==null&&Math.abs(t-lastT)<.25?mdl.swept(lastT,t):null;lastT=t;
+ c2d.setTransform(d,0,0,d,0,0);draw(c2d,mdl,layout(mdl,w,h),{t,prev:swept?t+Math.max(-.06,Math.min(.06,lastPrev-t)):t,down,png,swept});
  const words=`Needle view, true scale: ${down?(grab?'stylus held in the groove':'stylus in the groove, playing'):'stylus lifted'}; ${png?'PNG pixel trace':'vector groove'}.`;
  if(words!==label){label=words;canvas.setAttribute('aria-label',words);}
 }
