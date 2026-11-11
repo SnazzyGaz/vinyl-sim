@@ -1103,13 +1103,53 @@ function setRay(event){const b=renderer.domElement.getBoundingClientRect();point
 function hitPlane(event,z){setRay(event);const p=new THREE.Vector3();return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-z),p)?p:null;}
 function hit(event){return hitPlane(event,window.vinyl.record?.metadata.thickness_mm||2.5);}
 function pickIn(objects){if(!objects.length)return null;const h=ray.intersectObjects(objects,true).find(i=>i.object.visible!==false);if(!h)return null;let o=h.object;while(o&&!o.userData?.pick)o=o.parent;return o?{obj:o,kind:o.userData.pick,point:h.point}:{obj:h.object,kind:null,point:h.point};}
+/* Sleeves pick only where they are seen: the nearest solid surface under the cursor must be the sleeve
+   (or its own record, a part of the jacket). Occluders are every visible, opaque mesh in the scene
+   except the sleeves: the room, the cabinet and horn, the platter and disc, the crate itself, the
+   bench, the toys (the shiba by its body alone, not its fur shells). Helpers never occlude: invisible
+   hit proxies, see-through decals and glows (contact shadows, the drop ring, engraved plates), lines,
+   points and sprites. The list is built once and again only when the scene's objects change. Each test
+   is one ray, only as far as the sleeve, stopping at the first thing in the way: bounding spheres cull
+   nearly every mesh, and a heavy one (the horn, the dog) is walked in boxed runs of its triangles. */
+let occluders=null,occluderKey='';
+function occluderList(){
+ let n=0;scene.traverse(()=>{n++;});const key=n+'|'+sleeves.children.length+'|'+toyChoice;
+ if(occluders&&key===occluderKey)return occluders;
+ const out=[];
+ (function walk(o){if(o.userData?.pick==='sleeve')return;if(o.name==='shiba-fur')return;
+  if(o.isMesh&&!o.isSprite&&o.geometry?.attributes?.position){const ms=Array.isArray(o.material)?o.material:[o.material],solid=ms.some(m=>m&&m.visible!==false&&m.colorWrite!==false&&!(m.transparent&&(m.depthWrite===false||m.opacity<.5)));if(solid)out.push(o);}
+  for(const c of o.children)walk(c);})(scene);
+ occluders=out;occluderKey=key;return out;
+}
+function shownInScene(o){for(;o;o=o.parent)if(o.visible===false)return false;return true;}
+const occ={sphere:new THREE.Sphere(),inv:new THREE.Matrix4(),ray:new THREE.Ray(),a:new THREE.Vector3(),b:new THREE.Vector3(),c:new THREE.Vector3(),hit:new THREE.Vector3(),chunks:new WeakMap(),RUN:128};
+function runsOf(g){let c=occ.chunks.get(g);if(c)return c;const pos=g.attributes.position,idx=g.index,n=Math.floor((idx?idx.count:pos.count)/3),v=new THREE.Vector3();c=[];
+ for(let t0=0;t0<n;t0+=occ.RUN){const t1=Math.min(n,t0+occ.RUN),b=new THREE.Box3();for(let i=t0*3;i<t1*3;i++)b.expandByPoint(v.fromBufferAttribute(pos,idx?idx.getX(i):i));c.push({t0,t1,b});}
+ occ.chunks.set(g,c);return c;}
+// Does the pick ray meet mesh m nearer than `far`?
+function inTheWay(m,far){
+ const g=m.geometry,r=ray.ray;if(!g.boundingSphere)g.computeBoundingSphere();
+ occ.sphere.copy(g.boundingSphere).applyMatrix4(m.matrixWorld);
+ if(!r.intersectsSphere(occ.sphere)||r.origin.distanceTo(occ.sphere.center)-occ.sphere.radius>far)return false;
+ const pos=g.attributes.position,idx=g.index,n=(idx?idx.count:pos.count)/3;
+ if(n<=1500||m.isInstancedMesh||m.isSkinnedMesh||m.morphTargetInfluences){const f=ray.far,h=[];ray.far=far;m.raycast(ray,h);ray.far=f;return h.length>0;}
+ occ.inv.copy(m.matrixWorld).invert();occ.ray.copy(r).applyMatrix4(occ.inv);const {a,b,c,hit}=occ;
+ for(const k of runsOf(g)){if(!occ.ray.intersectsBox(k.b))continue;
+  for(let i=k.t0*3;i<k.t1*3;i+=3){a.fromBufferAttribute(pos,idx?idx.getX(i):i);b.fromBufferAttribute(pos,idx?idx.getX(i+1):i+1);c.fromBufferAttribute(pos,idx?idx.getX(i+2):i+2);
+   if(occ.ray.intersectTriangle(a,b,c,false,hit)&&hit.applyMatrix4(m.matrixWorld).distanceTo(r.origin)<far)return true;}}
+ return false;}
+function sleeveInSight(sl){
+ const far=sl.point.distanceTo(ray.ray.origin)-.3;
+ for(const m of occluderList())if(shownInScene(m)&&inTheWay(m,far))return false;
+ return true;
+}
 let armHold=null;
 function pickAt(e){
  const v=window.vinyl;setRay(e);
  if(v.record&&tonearm.visible){const a=ray.intersectObjects(armParts,false)[0];if(a)return {kind:'arm'};}
  {const sw=phonograph.getObjectByName('toy-switch');if(sw&&ray.intersectObject(sw,true).length)return {kind:'toy-switch'};}
  const sl=pickIn(sleeves.children.filter(o=>o.userData.pick==='sleeve'));
- if(sl&&sl.kind==='sleeve')return sl;
+ if(sl&&sl.kind==='sleeve'&&shownInScene(sl.obj)&&sleeveInSight(sl))return sl;
  if(bench.group){const b=pickIn([bench.blanks,bench.post].filter(Boolean));if(b&&(b.kind==='blanks'||b.kind==='post'))return b;}
  return null;
 }

@@ -262,7 +262,7 @@ try {
    win.emit('vinyl-sleeves',{detail:{current:'a',sleeves:[{id:'b',label:'Second'},{id:'c',label:'Third'}]}});tick();
    const front=context.api.sleeves.children.filter(o=>o.name==='sleeve'&&!o.userData.empty&&o.userData.racked).sort((a,b)=>(b.renderOrder||0)-(a.renderOrder||0))[0];
    assert.ok(front,'front racked sleeve present');
-   front.getWorldPosition(mid);const [bx,by]=toScreen(mid),[tx,ty]=toScreen(new real.Vector3(Rr*.3,Rr*.2,-4));
+   context.api.jacketCenter({p:front.position,q:front.quaternion},mid);const [bx,by]=toScreen(mid), /* its cover's middle: the bottom edge stands behind the crate's front wall */[tx,ty]=toScreen(new real.Vector3(Rr*.3,Rr*.2,-4));
    const homeBefore=front.userData.home.p.clone();
    canvas.emit('pointerdown',event(bx,by,0));
    const grabbed=vm.runInContext('sleeveDrag&&sleeveDrag.jacket',context);
@@ -302,6 +302,24 @@ try {
    assert.ok(clearances.every(c=>c.off<3),'every extract frame clears the sleeve walls (on-axis slide)');
    assert.ok(worst>.5,`record from the offered sleeve clears the machine (closest ${worst.toFixed(2)} mm to ${who})`);
    close(disc.position,new real.Vector3());assert.ok(Math.abs(disc.rotation.x)<1e-9,'and lands flat');}
+  // Sleeves pick only where they are seen: from the seat a sleeve's cover hovers and picks as before; from low on the far
+  // side of the machine, the same sleeve still under the cursor (geometrically) neither hovers nor picks: the cabinet is in front.
+  {win.emit('keydown',{key:'Escape'});reset.emit('click');for(let i=0;i<80;i++)tick();scene.updateMatrixWorld(true);
+   const S=context.api.getR()*2*1.04,front=context.api.sleeves.children.filter(o=>o.name==='sleeve'&&o.userData.racked&&!o.userData.empty).sort((a,b)=>(b.renderOrder||0)-(a.renderOrder||0))[0];
+   assert.ok(front,'a racked sleeve to aim at');
+   const at=()=>{scene.updateMatrixWorld(true);camera.updateMatrixWorld();return toScreen(context.api.jacketCenter({p:front.position,q:front.quaternion},new real.Vector3()));};
+   const look=(x,y)=>{canvas.emit('pointermove',{...event(x,y,0),buttons:0});context.__e=event(x,y,0);
+    return {hover:vm.runInContext('hoverId',context),pick:vm.runInContext('pickAt(__e)?.kind||null',context),
+     raw:vm.runInContext('pickIn(sleeves.children.filter(o=>o.userData.pick==="sleeve"))?.obj?.userData?.sleeveId??null',context)};};
+   let [x,y]=at(),r=look(x,y);
+   assert.equal(r.hover,front.userData.sleeveId,'seat view: hovering a sleeve\'s cover raises it, as before');assert.equal(r.pick,'sleeve','and a click there picks it');
+   canvas.emit('pointermove',{...event(5,5,0),buttons:0});assert.equal(vm.runInContext('hoverId',context),null);
+   const cc=vm.runInContext('crateCenter()',context),pos=cc.clone().setZ(0).normalize().multiplyScalar(-context.api.getR()*6);pos.z=cc.z+S*.35;
+   camera.position.copy(pos);camera.lookAt(cc.x,cc.y,cc.z+S*.35);camera.updateMatrixWorld();
+   [x,y]=at();r=look(x,y);
+   assert.equal(r.raw,front.userData.sleeveId,'low behind the machine, the sleeve is still under the cursor');
+   assert.equal(r.hover,null,'but the cabinet is in front of it: no hover');assert.notEqual(r.pick,'sleeve','and no pick, so no pop');
+   canvas.emit('pointermove',{...event(5,5,0),buttons:0});reset.emit('click');for(let i=0;i<80;i++)tick();}
   assert.equal(lifts,0);assert.equal(swaps.length,3);
   // Tonearm is the needle switch: a click on the reproducer lifts a playing needle; another drops it.
   {vinyl.down=true;const tipObj=context.api.armParts[4];tick();scene.updateMatrixWorld(true);const pl=placements.length;tapObj(tipObj);assert.equal(lifts,1,'arm click lifts');assert.equal(vinyl.down,false);
