@@ -671,9 +671,9 @@ function coverArt(tex,label,album=false){
    and holds it; drag that to the platter to play. Sleeves never leave the crate. */
 const CRATE_LEAN=.12;
 function crateFrame(){
- // back-left of the machine, running away to the left; the covers face the gramophone, so from the
- // seat each sleeve shows a sliver of its cover, like flicking through a bin in a shop
- const S=2*R*1.04,yaw=1.74,o=new THREE.Vector3(-(cabW+R*.45),R*1.3,tableZ);
+ // back-left of the machine, running away to the left; the covers face the gramophone, turned
+ // ~20 degrees toward the seat, so from it each sleeve shows more of its cover, like a shop bin
+ const S=2*R*1.04,yaw=1.40,o=new THREE.Vector3(-(cabW+R*.45),R*1.3,tableZ);
  return {o,yaw,S,wall:R*.05,pitch:R*.1,front:R*.12};
 }
 function crateLocal(x,y,z){const f=crateFrame(),c=Math.cos(f.yaw),s=Math.sin(f.yaw);return new THREE.Vector3(f.o.x+x*c-y*s,f.o.y+x*s+y*c,f.o.z+z);}

@@ -40,7 +40,7 @@ On GitHub Pages, cutting and playing both happen in your browser and nothing is 
 
 *The Room: the whole app in one scene, with the lathe on the bench at the right.*
 
-The Room puts cutting, playing and keeping records in one scene. Drop a song anywhere, or click the stack of blanks on the bench, and the lathe cuts it. A picture dropped with the song becomes its cover. Every record you cut or open is filed in the crate, and it is still there next visit in the same browser. Put a sleeve on the post tray to save the record's files.
+The Room puts cutting, playing and keeping records in one scene. Drop a song anywhere, or click the stack of blanks on the bench, and the lathe cuts it. A picture dropped with the song becomes its cover. Every record you cut or open is filed in the crate, and it is still there next visit in the same browser. Click the post tray on the bench (or press S) to save the playing record's files.
 
 A toy rides on the cabinet lid and dances to the music. The hula girl is the default, and a small brass pip on the cabinet front swaps in Garyck Arntzen's shiba.
 
@@ -48,7 +48,7 @@ A toy rides on the cabinet lid and dances to the music. The hula girl is the def
 
 | To | Do this |
 |---|---|
-| Play a record from the crate | Drag its sleeve over the cabinet and let go when the rim glows. Or click: hover a sleeve to raise it, click to slide the record half out, then click the record again. Esc puts it back. |
+| Play a record from the crate | Sleeves stay in the crate. Hover one to raise it, click to slide its record half out, then drag the record onto the platter (it glows when it will take it) or click it again. Esc puts it back. |
 | Start and stop | Use the **Drop/Lift needle** button or the tonearm. The position slider seeks. |
 | Scratch | While it plays, hold the record and drag round the centre. |
 | Inspect | With the needle up, click the record or use **Inspect record**. Drag to turn it, scroll to look closer, and press Esc to put it back. |
