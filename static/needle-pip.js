@@ -15,10 +15,13 @@
                      depth = groove_depth * max(0, 1 - |r - centre| / (groove_width/2)).
    Where the record carries neither (the bundled demo), the view falls back to the old
    reconstruction from the playback audio and says so in its label.
-   Field: the surface around the tip in the tip's own frame (across the record, and upstream
-   along the groove with its true curvature); section: the same samples cut through the tip;
-   the tip (an illustrative radius, a quarter of the half width) rests on that section, at
-   the lowest height that clears every sample. Each frame is one exposure: the real surface
+   Seen by a flea: a pinhole eye standing on the record just behind the stylus, looking up the
+   groove. Section: the record cut through the tip, the picture plane, so a true cross-section;
+   field: the real surface beyond it in true perspective, the groove's walls, the neighbouring
+   turns and the lands receding 6 mm upstream (straight rows of the record plane, so the
+   spiral's own curvature shows). The stylus is a real one at true scale (0.7 mil / 17.8 µm
+   tip, 24° flanks) and rests on that section as a whole, at the lowest height that clears
+   every sample. Each frame is one exposure: the real surface
    averaged over the instants since the last frame, so fast play reads as a steady blur and a
    held record as the exact groove. True scale, the same both ways; nothing is exaggerated.
    Costs nothing while hidden: nothing is read, decoded or drawn until it is shown. */
@@ -56,7 +59,9 @@ function makeModel(m,x){
  // in the stylus frame: w across the record (+ toward the rim), 0 = this turn's nominal radius.
  function centre(k,u,t){const Rc=radius(t),turns=turnsAt(t)+k+u/(TAU*Rc);if(turns<0||turns>end)return null;
   return -k*pitch+amp*xs(t+k*rev+u/speed(t))-u*u/(2*Rc);}
- const tip={rho:hw*.25}; // an illustrative tip radius (a quarter of the groove's half width); its rest is computed on the real section
+ // A real stylus at true scale: a conical diamond with a 0.7 mil (17.8 µm) spherical tip, the usual LP tip,
+ // its flanks 24° off the vertical, tangent to the tip. It rests on the real section as a whole (tip and flanks).
+ const tip={rho:.0178,half:24*Math.PI/180,height:.8*depth+.3*hw};
  function stylus(t){return amp*xs(t);}
  return {m,fs,amp,hw,depth,pitch,rev,end,xs,turnsAt,radius,speed,centre,tip,stylus};
 }
@@ -109,23 +114,34 @@ function instants(model,surf,t0,t1,max){
  for(let i=0;i<n;i++){const t=n===1?(a+b)/2:a+(b-a)*i/(n-1),th=TAU*model.turnsAt(t);out.push({t,turns:model.turnsAt(t),c:Math.cos(th),s:Math.sin(th),rs:model.radius(t)+surf.lateral(t)});}
  return out;
 }
-// Rest a round tip of radius rho on a sampled section (w ascending, y = -depth): the lowest centre height
-// that clears every sample, and the sample(s) it touches on each side.
-function rest(sec,rho){let best=-Infinity,L=null,Rt=null,yl=-Infinity,yr=-Infinity;
- for(const [w,y] of sec){if(Math.abs(w)>=rho)continue;const h=y+Math.sqrt(rho*rho-w*w);if(w<=0){if(h>yl){yl=h;L=[w,y];}}else if(h>yr){yr=h;Rt=[w,y];}if(h>best)best=h;}
- const tol=rho*.04,contacts=[];if(L&&yl>=best-tol)contacts.push(L);if(Rt&&yr>=best-tol)contacts.push(Rt);
+// The stylus's underside, relative to its tip centre, at lateral offset w: the spherical tip out to where the
+// flanks leave it tangentially, then the cone (half angle `half`) up to its top `height` above the tip centre.
+function underside(tip,w){const a=Math.abs(w),{rho,half}=tip,e=rho*Math.cos(half);
+ if(a<=e)return -Math.sqrt(rho*rho-a*a);const z=-rho*Math.sin(half)+(a-e)/Math.tan(half);return z<=tip.height?z:Infinity;}
+// Rest the stylus on a sampled section (w ascending, y = -depth): the lowest tip-centre height that clears every
+// sample, and the sample(s) it touches on each side. tip: {rho, half, height} (a bare number = a ball of that radius).
+function rest(sec,tip){if(typeof tip==='number')tip={rho:tip,half:1e-9,height:tip};
+ let best=-Infinity,L=null,Rt=null,yl=-Infinity,yr=-Infinity;
+ for(const [w,y] of sec){const z=underside(tip,w);if(z===Infinity)continue;const h=y-z;if(w<=0){if(h>yl){yl=h;L=[w,y];}}else if(h>yr){yr=h;Rt=[w,y];}if(h>best)best=h;}
+ const tol=Math.max(tip.rho*.04,1e-5),contacts=[];if(L&&yl>=best-tol)contacts.push(L);if(Rt&&yr>=best-tol)contacts.push(Rt);
  return {yc:best,contacts};}
 // Screen layout for a W x H panel (CSS px): true scale both ways, fitted to this record's groove.
 function layout(model,W,H){
  const {pitch,hw,depth}=model,Wv=pitch*.75+hw;
  // the tip's contact sits in the middle of the panel; the hatched cut face runs down to a base line kept
  // above the bottom labels
- const S=Math.min(W/(2*Wv),H*.22/depth),base=H-16,sy0=Math.min(H*.5-.55*depth*S,base-depth*S-6),hzn=6,P=sy0-hzn;
- // seen from the front left and above: the groove runs off up and to the right, with a little perspective
- const ox=.62,oy=.95,Dp=2.2*P/(S*oy),L=P/(S*oy-P/Dp)*1.05;
+ const S=Math.min(W/(2*Wv),H*.22/depth),base=H-16,sy0=Math.min(H*.5-.55*depth*S,base-depth*S-6),hzn=7,P=sy0-hzn;
+ // A flea's eye: a pinhole camera standing on the record just behind the cut, looking straight along the
+ // groove. The picture plane is the cut face (u = 0), so the front section is a true cross-section at S px/mm
+ // both ways, and everything upstream is in true perspective: the eye is P/S mm above the land (its horizon
+ // near the top of the panel), a fifth of the panel off toward the rim (the groove runs away up and to the
+ // right of the stylus), and W/2S mm behind the cut (90° across the panel). The field reaches 6 mm upstream.
+ const eh=P/S,ew=W*.2/S,Dp=W/(2*S),ox=ew/Dp,oy=eh/Dp,L=6,gEnd=Dp/(Dp+L);
+ const rows=Math.max(24,Math.min(48,Math.round(P*(1-gEnd)/1.5))); // land rows ~1.5 px apart on screen
  const steps=[.05,.1,.2,.25,.5,1,2,5];let bar=steps[0];for(const s of steps)if(s*S<=W*.32)bar=s;
- return {W,H,S,cx:W*.5,sy0,hzn,P,Dp,L,ox,oy,base,half:W/S,bar};
+ return {W,H,S,cx:W*.5,sy0,hzn,P,Dp,L,ox,oy,eye:{w:ew,h:eh,d:Dp},gEnd,rows,base,half:W/S,bar};
 }
+// = the pinhole: eye at (w, u, y) = (eye.w, -eye.d, eye.h), picture plane u = 0 at S px/mm
 function project(L,w,u,y){const g=1/(1+u/L.Dp);return [L.cx+L.S*g*(w+u*L.ox),L.sy0-L.S*g*(y+u*L.oy)];}
 
 /* ---------- drawing: cream and brass line engraving on a dark panel ---------- */
@@ -152,8 +168,8 @@ function rasterField(px,Wi,Hi,grid,shade,us,NR,NC,dx,L){
 // A few paths and gradients a frame; dark outlines so it reads crisply on the field.
 const EDGE='#0d0906';
 function grad(c,x0,y0,x1,y1,stops){const g=c.createLinearGradient(x0,y0,x1,y1);for(const [o,col] of stops)g.addColorStop(o,col);return g;}
-function drawStylus(c,L,tx,ty,r,h){
- const half=24*Math.PI/180,sn=Math.sin(half),cs=Math.cos(half),tn=Math.tan(half);
+function drawStylus(c,L,tx,ty,r,h,half=24*Math.PI/180){
+ const sn=Math.sin(half),cs=Math.cos(half),tn=Math.tan(half);
  const ey=ty-r*sn,top=ty-Math.max(h,3*r),wt=r*cs+tn*(ey-top); // the cone's sides touch the tip circle at (±r cos, -r sin)
  // collar: a short brass sleeve holding the diamond
  const cH=Math.max(5,Math.min(9,r*1.6)),cw0=wt*1.18,cw1=wt*.95,cy1=top-cH;
@@ -196,27 +212,32 @@ function draw(c,model,surf,L,s){
  const {W,H,S}=L,t=s.t,hw=model.hw,D=model.depth;
  const ins=instants(model,surf,s.prev??t,t,s.instants||8);
  c.fillStyle=BG;c.fillRect(0,0,W,H);
- // field: rows from the far end in, columns spread evenly across the screen in each row
- const NR=s.rows||28,dx=s.colPx||4,NC=Math.ceil((W+16)/dx)+1,grid=new Float32Array((NR+1)*NC),ws=new Float32Array((NR+1)*NC),us=new Float32Array(NR+1);
- // Held or slow, few instants: each row is instead averaged over its own footprint along the groove (a box
- // filter, what a screen pixel there can show), so detail finer than the rows does not alias into false steps.
- const sub=Math.max(1,Math.floor(8/ins.length)),rowU=i=>L.L*(i/NR)**1.25;
- for(let i=0;i<=NR;i++){const u=rowU(i),g=1/(1+u/L.Dp),du=(rowU(Math.min(NR,i+1))-rowU(Math.max(0,i-1)))/2;us[i]=u;
+ // Field: rows from the cut out to L.L mm upstream, evenly spaced on screen (even steps of the perspective
+ // factor g), columns spread evenly across the screen in each row. Every vertex is the mean of 8 samples of the
+ // real surface over its own footprint (a box filter: what one screen pixel there can show), so a far groove
+ // narrower than a column does not alias: across the row, the column's width; along the groove, the row's
+ // depth while held, or the instants of the exposure while playing (the record's own motion covers it).
+ const NR=s.rows||L.rows,dx=s.colPx||3,NC=Math.ceil((W+16)/dx)+1,grid=new Float32Array((NR+1)*NC),ws=new Float32Array((NR+1)*NC),us=new Float32Array(NR+1);
+ const K=8,sub=Math.max(1,Math.floor(K/ins.length)),gOf=i=>1-(1-L.gEnd)*i/NR,rowU=i=>L.Dp*(1/gOf(i)-1),wk=new Float64Array(NC);
+ for(let i=0;i<=NR;i++){const u=rowU(i),g=gOf(i),du=(rowU(Math.min(NR,i+1))-rowU(Math.max(0,i-1)))/2,cw=dx/(L.S*g);us[i]=u;
   for(let j=0;j<NC;j++)ws[i*NC+j]=(-8+j*dx-L.cx)/(L.S*g)-u*L.ox;
-  const wt=1/(sub*ins.length);for(let k=0;k<sub;k++){const uk=sub===1?u:Math.max(0,u+du*((k+.5)/sub-.5));for(const f of ins)surf.addRow(f,uk,ws,i*NC,NC,grid,i*NC,wt);}}
- // Shade at every vertex: lit from the left by the wall's slope (a full V's slope = one step), darker with depth.
+  const n=sub*ins.length,wt=1/n;
+  for(let k=0;k<n;k++){const f=ins[k%ins.length],uk=sub===1?u:Math.max(0,u+du*((k+.5)/n-.5)),ow=i?cw*((k*.6180339887+.5/n)%1-.5):0;
+   for(let j=0;j<NC;j++)wk[j]=ws[i*NC+j]+ow;surf.addRow(f,uk,wk,0,NC,grid,i*NC,wt);}}
+ // Shade at every vertex: lit from the left by the wall's slope (a full V's slope = one step), darker with depth,
+ // dimmer with distance, and dimmest at the far end of the field, which so fades out rather than stops.
  const lift=D/hw,shade=new Float32Array(grid.length);
- for(let i=0;i<=NR;i++)for(let j=0;j<NC;j++){const q=i*NC+j,l=j?q-1:q,r=j<NC-1?q+1:q,slope=(grid[l]-grid[r])/Math.max(1e-9,ws[r]-ws[l]);
-  shade[q]=Math.max(0,Math.min(1,.62+.3*Math.max(-1,Math.min(1,slope/lift))-.3*grid[q]/D));}
+ for(let i=0;i<=NR;i++){const fade=(.55+.45*gOf(i))*(.3+.7*Math.min(1,(NR-i)/(NR*.3)));for(let j=0;j<NC;j++){const q=i*NC+j,l=j?q-1:q,r=j<NC-1?q+1:q,slope=(grid[l]-grid[r])/Math.max(1e-9,ws[r]-ws[l]);
+  shade[q]=fade*Math.max(0,Math.min(1,.62+.3*Math.max(-1,Math.min(1,slope/lift))-.3*grid[q]/D));}}
  // Height-field raster (rasterField) at CSS-pixel resolution into a scratch canvas, then scaled onto the panel:
  // smooth, seamless, one upload however busy the groove is. The section and the tip stay crisp vector on top.
  const sc=s.scratch,Hi=Math.min(H,Math.ceil(L.sy0+D*S)+2);
  if(sc&&sc.getContext){if(sc.width!==W||sc.height!==Hi){sc.width=W;sc.height=Hi;}const sx=sc.getContext('2d'),img=imageFor(sx,W,Hi);
   if(img){rasterField(img.px,W,Hi,grid,shade,us,NR,NC,dx,L);sx.putImageData(img.data,0,0);c.imageSmoothingEnabled=true;c.drawImage(sc,0,0,W,Hi);}}
  // the record cut away through the stylus: the same exposure, one sample per screen pixel, hatched below
- const rho=model.tip.rho,sec=[];
+ const tip=model.tip,rho=tip.rho,sec=[];
  const sw=[];for(let x=-2;x<=W+2;x++){const w=(x-L.cx)/S;if(Math.abs(w)>=rho)sw.push(w);}
- for(let i=-48;i<=48;i++)sw.push(rho*i/48*.9999); // finer under the tip, where it rests
+ for(let i=-48;i<=48;i++)sw.push(rho*i/48*.9999); // finer under the tip, where it rests (true scale: under a pixel)
  sw.sort((a,b)=>a-b);const swa=Float64Array.from(sw),sd=new Float64Array(sw.length);for(const f of ins)surf.addRow(f,0,swa,0,sw.length,sd,0,1/ins.length);
  for(let j=0;j<sw.length;j++)sec.push([sw[j],-sd[j]]);
  const top=sec.map(([w,y])=>project(L,w,0,y));
@@ -225,12 +246,12 @@ function draw(c,model,surf,L,s){
  c.restore();
  c.strokeStyle=INK;c.lineWidth=1.2;path(c,top);c.stroke();
  c.strokeStyle='rgba(196,161,90,.6)';c.lineWidth=.8;c.beginPath();c.moveTo(0,L.base+.5);c.lineTo(W,L.base+.5);c.stroke();
- // stylus, resting on the section drawn: a faceted diamond cone on its round tip (the tip radius is
- // illustrative), set in a brass collar on a shank from the cantilever, seen end-on
- const res=rest(sec,rho);
+ // stylus, resting on the section drawn: a faceted diamond cone on its round tip, both at true scale, set
+ // in a brass collar on a shank from the cantilever, seen end-on
+ const res=rest(sec,tip);
  const yc=s.down&&isFinite(res.yc)?res.yc:rho+Math.max(.12,.35*D);
- const [tx,ty]=project(L,0,0,yc),r=Math.max(2.2,rho*S);
- drawStylus(c,L,tx,ty,r,(.8*D+.3*hw)*S);
+ const [tx,ty]=project(L,0,0,yc),r=Math.max(.6,rho*S);
+ drawStylus(c,L,tx,ty,r,tip.height*S,tip.half);
  // the tip and the points where it actually touches the walls: solid, ringed dark, a soft glow while it plays
  const contacts=s.down?res.contacts:[];
  if(contacts.length){const lo=contacts.reduce((p,q)=>q[1]<p[1]?q:p),[gx,gy]=project(L,lo[0],0,lo[1]),gl=c.createRadialGradient(gx,gy,0,gx,gy,12);gl.addColorStop(0,'rgba(255,236,190,.5)');gl.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=gl;c.fillRect(gx-12,gy-12,24,24);}
@@ -246,7 +267,7 @@ function draw(c,model,surf,L,s){
  let tag=labelFor(surf,W<200);const room=W-8-(12+bl+(c.measureText?.(lab(`${L.bar} mm`))?.width||0))-10;if((c.measureText?.(lab(tag))?.width||0)>room)tag=labelFor(surf,true);c.textAlign='right';c.fillStyle='rgba(234,223,198,.7)';c.fillText(lab(tag),W-8,by);
  if(!s.down){c.textAlign='right';c.fillText(lab('Lifted'),W-8,14);}
  c.textAlign='left';
- return {section:sec,rest:res,yc,instants:ins.length};
+ return {section:sec,rest:res,yc,instants:ins.length,field:{grid,ws,us,NR,NC,dx}};
 }
 function labelFor(surf,short){
  switch(surf.kind){
@@ -257,7 +278,7 @@ function labelFor(surf,short){
  }
 }
 
-const core={shelfCoefficients,displacement,makeModel,vectorSurface,pngSurface,instants,rest,rasterField,layout,project,draw,labelFor};
+const core={shelfCoefficients,displacement,makeModel,vectorSurface,pngSurface,instants,underside,rest,rasterField,layout,project,draw,labelFor};
 if(typeof module!=='undefined'&&module.exports)module.exports=core;
 if(typeof document==='undefined'||typeof window==='undefined'||!document.getElementById)return;
 

@@ -65,10 +65,14 @@ for(const seconds of [11.6,200]){
    for(const u of [.4,2.5,7]){const out=new Float64Array(row.length);surf.addRow(fi,u,row,0,row.length,out,0,1);
     row.forEach((w,j)=>{const r=f.rs+w,want=surf.depthAt(r*f.c-u*f.s,r*f.s+u*f.c);
      if(surf===G)assert.equal(out[j],want,'PNG field = the stored pixels');else assert.ok(Math.abs(out[j]-want)<1e-9,'vector field = the Cutter equation');});}
-   // the tip rests on it: clears every sample, touches at least one, the contacts drawn are real samples
-   const rho=g.tip.rho;let close=Infinity;for(const [w,y] of res.section){const dd=Math.hypot(w,y-res.yc);close=Math.min(close,dd);assert.ok(dd>=rho-1e-9,'the tip never goes into the wall');}
-   assert.ok(close<=rho+1e-9,'and touches it');assert.ok(res.rest.contacts.length>=1);
-   for(const [w,y] of res.rest.contacts)assert.ok(res.section.some(([a,b])=>a===w&&b===y)&&Math.abs(Math.hypot(w,y-res.yc)-rho)<rho*.05,'contact points sit on the section');}
+   // the stylus rests on it, the whole diamond (round tip, then the cone tangent to it): no sample inside it,
+   // at least one touching it, and the contacts drawn are real samples on its outline. Checked against the cone
+   // through its own apex (rho/sin(half) below the tip centre), not the view's own underside().
+   const {rho,half,height}=g.tip,inside=(w,y)=>{const dz=y-res.yc,a=Math.abs(w);if(dz>height)return -1;
+    const ball=rho-Math.hypot(w,dz),cone=dz>=-rho*Math.sin(half)?((dz+rho/Math.sin(half))*Math.tan(half)-a)*Math.cos(half):-1;return Math.max(ball,cone);};
+   let close=-Infinity;for(const [w,y] of res.section){const d=inside(w,y);close=Math.max(close,d);assert.ok(d<=1e-9,'the stylus never goes into the wall');}
+   assert.ok(close>=-1e-6,'and touches it');assert.ok(res.rest.contacts.length>=1);
+   for(const [w,y] of res.rest.contacts)assert.ok(res.section.some(([a,b])=>a===w&&b===y)&&Math.abs(inside(w,y))<1e-5,'contact points sit on the section, on the stylus');}
   // vector, held: the V under the tip is the Cutter's V, centred on the tip, both walls touched
   for(const [w,y] of rv.section)if(Math.abs(w)<hw*.98)assert.ok(Math.abs(y+D*(1-Math.abs(w)/hw))<1e-9,'the master V, exactly');
   assert.equal(rv.rest.contacts.length,2,'a centred V: both walls');
@@ -94,6 +98,18 @@ for(const seconds of [11.6,200]){
   P.rasterField(px,3,60,Float32Array.of(0,0,0, 2,2,2, 0,0,0),sh,us,NR,NC,1e3,Lr);
   const col=y=>px[y*3];assert.equal(col(29),col(25),'one surface down the column');
   const top=[...Array(60).keys()].find(y=>col(y)===col(29));assert.equal(top,10,'the far land shows above the pit, at its own height');}
+ // the flea's eye: a true pinhole whose picture plane is the cut, the field 6 mm upstream, rows even on screen,
+ // and every row the record's own surface there (the 8 samples of its footprint, read from the record plane)
+ {const E=L.eye;assert.equal(L.L,6);assert.ok(E.h>0&&E.d>0&&E.w>0);
+  for(const [w,u,y] of [[0,0,0],[.3,0,-.2],[-.8,1.5,-.45],[.2,5.5,0]]){const [x,yy]=P.project(L,w,u,y),k=E.d/(E.d+u);
+   assert.ok(Math.abs(x-(L.cx+L.S*(E.w+(w-E.w)*k)))<1e-9&&Math.abs(yy-(L.sy0-L.S*(E.h+(y-E.h)*k)))<1e-9,'project() is the pinhole');}
+  const [x0,y0]=P.project(L,.37,0,-.21);assert.ok(Math.abs(x0-(L.cx+.37*L.S))<1e-9&&Math.abs(y0-(L.sy0+.21*L.S))<1e-9,'the cut face: true scale, both ways');
+  for(const surf of [V,G]){const t=6.2,r=P.draw(ctx,g,surf,L,{t,down:true}),{grid,ws,us,NR,NC,dx}=r.field,f=frame(surf,t);
+   assert.equal(us[0],0);assert.ok(Math.abs(us[NR]-6)<1e-5,'the field reaches 6 mm upstream');
+   const ly=us.map(u=>P.project(L,0,u,0)[1]),st=ly.slice(1).map((y,i)=>ly[i]-y);assert.ok(Math.max(...st)-Math.min(...st)<1e-3,'rows evenly spaced on screen');
+   for(const i of [0,Math.round(NR/4),Math.round(NR*.6),NR]){const u=us[i],gg=1/(1+u/L.Dp),cw=dx/(L.S*gg),du=(us[Math.min(NR,i+1)]-us[Math.max(0,i-1)])/2;
+    for(let j=0;j<NC;j+=7){let a=0;for(let k=0;k<8;k++){const uk=Math.max(0,u+du*((k+.5)/8-.5)),ow=i?cw*((k*.6180339887+.5/8)%1-.5):0,rr=f.rs+ws[i*NC+j]+ow;a+=surf.depthAt(rr*f.c-uk*f.s,rr*f.s+uk*f.c)/8;}
+     assert.ok(Math.abs(grid[i*NC+j]-a)<1e-6,`field row at ${u.toFixed(2)} mm = the record there`);}}}}
  // what is shown is said
  assert.equal(P.labelFor(V,false),'Vector master');assert.equal(P.labelFor(G,false),`PNG pixels · ${sc.toFixed(3)} mm`);
  assert.match(P.labelFor(P.vectorSurface(g,'vector-rebuilt'),false),/rebuilt from playback/);assert.match(P.labelFor(P.vectorSurface(g,'png-trace'),false),/no 16-bit map/);
